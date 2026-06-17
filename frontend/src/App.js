@@ -2,12 +2,11 @@ import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 
 const API = "https://docmind-12ms.onrender.com"; // live backend (Render)
+const USER_NAME = "Sai Teja";
 
 /* ---------------- markdown (no dependency) ---------------- */
 function inline(text, k0 = 0) {
-  const parts = [];
-  const regex = /(\*\*[^*]+\*\*|`[^`]+`)/g;
-  let last = 0, m, key = k0;
+  const parts = []; const regex = /(\*\*[^*]+\*\*|`[^`]+`)/g; let last = 0, m, key = k0;
   while ((m = regex.exec(text)) !== null) {
     if (m.index > last) parts.push(text.slice(last, m.index));
     const tok = m[0];
@@ -19,8 +18,7 @@ function inline(text, k0 = 0) {
   return parts;
 }
 function Markdown({ text }) {
-  const lines = text.split("\n");
-  const blocks = []; let list = [];
+  const lines = text.split("\n"); const blocks = []; let list = [];
   const flush = () => { if (list.length) { blocks.push(<ul key={"u" + blocks.length} className="list-disc pl-5 space-y-1.5 my-2.5 marker:text-white/30">{list}</ul>); list = []; } };
   lines.forEach((line, i) => {
     const t = line.trim();
@@ -36,8 +34,7 @@ function AssistantText({ text, animate, onTick }) {
   const [shown, setShown] = useState(animate ? "" : text);
   useEffect(() => {
     if (!animate) { setShown(text); return; }
-    let i = 0;
-    const id = setInterval(() => { i += 4; setShown(text.slice(0, i)); onTick && onTick(); if (i >= text.length) { setShown(text); clearInterval(id); } }, 12);
+    let i = 0; const id = setInterval(() => { i += 4; setShown(text.slice(0, i)); onTick && onTick(); if (i >= text.length) { setShown(text); clearInterval(id); } }, 12);
     return () => clearInterval(id);
   }, [text, animate]); // eslint-disable-line
   const done = shown.length >= text.length;
@@ -72,17 +69,19 @@ export default function App() {
   const [model, setModel] = useState("gemini-2.5-flash-lite");
   const [chats, setChats] = useState(() => { try { return JSON.parse(localStorage.getItem("rag_chats")) || []; } catch { return []; } });
   const [chatId, setChatId] = useState(null);
+  const [search, setSearch] = useState("");
+  const [showAccount, setShowAccount] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showPlus, setShowPlus] = useState(false);
 
-  const bottomRef = useRef(null);
-  const recRef = useRef(null);
+  const bottomRef = useRef(null), recRef = useRef(null), fileRef = useRef(null);
   const scrollToBottom = () => bottomRef.current?.scrollIntoView({ behavior: "smooth" });
 
   useEffect(() => { localStorage.setItem("rag_chats", JSON.stringify(chats)); }, [chats]);
   useEffect(() => { scrollToBottom(); }, [messages, loading]);
 
   const saveChat = (msgs) => {
-    let id = chatId;
-    if (!id) { id = Date.now().toString(); setChatId(id); }
+    let id = chatId; if (!id) { id = Date.now().toString(); setChatId(id); }
     setChats((prev) => {
       const title = msgs.find((m) => m.role === "user")?.content.slice(0, 40) || "New chat";
       const exists = prev.some((c) => c.id === id);
@@ -93,16 +92,15 @@ export default function App() {
   const newChat = () => { setMessages([]); setChatId(null); setError(""); setAttached([]); };
   const loadChat = (c) => { setMessages(c.messages.map((m) => ({ ...m, animate: false }))); setChatId(c.id); setError(""); };
   const deleteChat = (id, e) => { e.stopPropagation(); setChats((p) => p.filter((c) => c.id !== id)); if (id === chatId) newChat(); };
+  const clearAll = () => { setChats([]); newChat(); setShowSettings(false); };
 
   const onPickFiles = async (e) => {
     const picked = Array.from(e.target.files); e.target.value = "";
     if (!picked.length) return;
     setUploading(true); setError("");
     const fd = new FormData(); picked.forEach((f) => fd.append("files", f));
-    try {
-      const res = await axios.post(`${API}/upload-pdf`, fd);
-      setAttached((prev) => [...prev, ...(res.data.files || []).map((f) => f.filename)]);
-    } catch (err) { setError("Upload failed: " + (err.response?.data?.detail || err.message)); }
+    try { const res = await axios.post(`${API}/upload-pdf`, fd); setAttached((p) => [...p, ...(res.data.files || []).map((f) => f.filename)]); }
+    catch (err) { setError("Upload failed: " + (err.response?.data?.detail || err.message)); }
     finally { setUploading(false); }
   };
 
@@ -134,10 +132,14 @@ export default function App() {
     recRef.current = rec; rec.start(); setListening(true);
   };
 
-  const samples = ["Summarize this document", "What are the key points?", "List the main skills mentioned"];
+  const initials = USER_NAME.split(" ").map((w) => w[0]).join("").slice(0, 2).toUpperCase();
+  const filtered = chats.filter((c) => c.title.toLowerCase().includes(search.toLowerCase()));
+  const samples = ["Summarize this document", "Explain like I'm 5", "List the key points"];
 
   return (
     <div className="flex h-screen bg-[#0d0d0f] text-[#ececee] font-sans antialiased">
+      <input type="file" accept=".pdf" multiple hidden ref={fileRef} onChange={onPickFiles} />
+
       {/* Sidebar */}
       <aside className="w-64 shrink-0 bg-[#161618] border-r border-white/[0.06] flex flex-col p-3">
         <div className="flex items-center gap-2 px-2 py-3">
@@ -145,13 +147,19 @@ export default function App() {
           <span className="font-semibold tracking-tight">DocMind</span>
         </div>
         <button onClick={newChat} className="mt-2 flex items-center gap-2 w-full px-3 py-2.5 rounded-xl border border-white/10 hover:bg-white/[0.04] transition text-sm">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
-          New chat
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>New chat
         </button>
-        <div className="mt-4 flex-1 overflow-y-auto space-y-0.5">
+
+        {/* Search history */}
+        <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-xl bg-white/[0.03] border border-white/[0.06]">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/40"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
+          <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search chats" className="bg-transparent outline-none text-sm w-full placeholder:text-white/30" />
+        </div>
+
+        <div className="mt-3 flex-1 overflow-y-auto space-y-0.5">
           <p className="px-2 text-[11px] uppercase tracking-wider text-white/30 mb-1">Recent</p>
-          {chats.length === 0 && <p className="px-2 text-sm text-white/25">No conversations yet</p>}
-          {chats.map((c) => (
+          {filtered.length === 0 && <p className="px-2 text-sm text-white/25">{search ? "No matches" : "No conversations yet"}</p>}
+          {filtered.map((c) => (
             <div key={c.id} onClick={() => loadChat(c)}
               className={`group flex items-center justify-between px-2.5 py-2 rounded-lg cursor-pointer text-sm transition ${c.id === chatId ? "bg-white/[0.07] text-white" : "text-white/55 hover:bg-white/[0.04]"}`}>
               <span className="truncate">{c.title}</span>
@@ -161,11 +169,33 @@ export default function App() {
             </div>
           ))}
         </div>
+
+        {/* Account (bottom) */}
+        <div className="relative pt-2 border-t border-white/[0.06]">
+          {showAccount && (
+            <>
+              <div className="fixed inset-0 z-10" onClick={() => setShowAccount(false)} />
+              <div className="absolute bottom-14 left-0 right-0 z-20 bg-[#202024] border border-white/10 rounded-xl p-1.5 shadow-2xl">
+                <button onClick={() => { setShowSettings(true); setShowAccount(false); }} className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg hover:bg-white/[0.06] text-sm text-white/80 transition">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
+                  Settings
+                </button>
+                <button onClick={clearAll} className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg hover:bg-white/[0.06] text-sm text-rose-300 transition">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
+                  Clear conversations
+                </button>
+              </div>
+            </>
+          )}
+          <button onClick={() => setShowAccount(!showAccount)} className="flex items-center gap-2.5 w-full px-2 py-2 rounded-lg hover:bg-white/[0.04] transition">
+            <div className="w-8 h-8 rounded-full bg-indigo-500 flex items-center justify-center text-white text-xs font-semibold">{initials}</div>
+            <span className="text-sm text-white/80">{USER_NAME}</span>
+          </button>
+        </div>
       </aside>
 
       {/* Main */}
       <main className="flex-1 flex flex-col min-w-0">
-        {/* Top bar */}
         <header className="h-14 shrink-0 border-b border-white/[0.06] flex items-center justify-end px-5">
           <select value={model} onChange={(e) => setModel(e.target.value)}
             className="bg-[#1a1a1d] border border-white/10 rounded-lg px-3 py-1.5 text-sm text-white/80 outline-none cursor-pointer hover:border-white/20 transition">
@@ -174,20 +204,16 @@ export default function App() {
           </select>
         </header>
 
-        {/* Messages */}
         <div className="flex-1 overflow-y-auto">
           <div className="max-w-3xl mx-auto px-5 py-8">
             {messages.length === 0 && !loading ? (
               <div className="flex flex-col items-center justify-center text-center mt-24">
                 <div className="w-12 h-12 rounded-2xl bg-indigo-500 flex items-center justify-center text-white text-xl font-bold mb-4">D</div>
                 <h1 className="text-2xl font-semibold tracking-tight">How can I help?</h1>
-                <p className="text-white/40 mt-2 text-sm">Attach a PDF with <span className="text-white/70">+</span>, then ask anything.</p>
+                <p className="text-white/40 mt-2 text-sm">Ask anything — with or without a PDF.</p>
                 <div className="flex flex-wrap justify-center gap-2 mt-6">
                   {samples.map((s) => (
-                    <button key={s} onClick={() => setQuestion(s)}
-                      className="px-3.5 py-2 rounded-xl border border-white/10 text-sm text-white/60 hover:bg-white/[0.04] hover:text-white/90 transition">
-                      {s}
-                    </button>
+                    <button key={s} onClick={() => setQuestion(s)} className="px-3.5 py-2 rounded-xl border border-white/10 text-sm text-white/60 hover:bg-white/[0.04] hover:text-white/90 transition">{s}</button>
                   ))}
                 </div>
               </div>
@@ -196,16 +222,13 @@ export default function App() {
                 {messages.map((m, i) => {
                   const isUser = m.role === "user";
                   if (isUser) return (
-                    <div key={i} className="flex justify-end">
-                      <div className="max-w-[80%] bg-[#26262c] rounded-2xl rounded-br-md px-4 py-2.5 text-[15px] leading-7 whitespace-pre-wrap">{m.content}</div>
-                    </div>
+                    <div key={i} className="flex justify-end"><div className="max-w-[80%] bg-[#26262c] rounded-2xl rounded-br-md px-4 py-2.5 text-[15px] leading-7 whitespace-pre-wrap">{m.content}</div></div>
                   );
                   return (
                     <div key={i} className="flex gap-3">
                       <div className="w-7 h-7 rounded-lg bg-indigo-500 shrink-0 flex items-center justify-center text-white text-xs font-bold mt-0.5">D</div>
                       <div className="min-w-0 flex-1">
-                        {m.isError
-                          ? <div className="text-[15px] text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-xl px-4 py-2.5">{m.content}</div>
+                        {m.isError ? <div className="text-[15px] text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-xl px-4 py-2.5">{m.content}</div>
                           : <AssistantText text={m.content} animate={m.animate} onTick={scrollToBottom} />}
                         {!m.isError && <Sources sources={m.sources} />}
                       </div>
@@ -215,9 +238,7 @@ export default function App() {
                 {loading && (
                   <div className="flex gap-3">
                     <div className="w-7 h-7 rounded-lg bg-indigo-500 shrink-0 flex items-center justify-center text-white text-xs font-bold">D</div>
-                    <div className="flex items-center gap-1 mt-2">
-                      {[0, 1, 2].map((d) => <span key={d} className="w-1.5 h-1.5 rounded-full bg-white/40 animate-pulse" style={{ animationDelay: `${d * 0.2}s` }} />)}
-                    </div>
+                    <div className="flex items-center gap-1 mt-2">{[0, 1, 2].map((d) => <span key={d} className="w-1.5 h-1.5 rounded-full bg-white/40 animate-pulse" style={{ animationDelay: `${d * 0.2}s` }} />)}</div>
                   </div>
                 )}
               </div>
@@ -233,8 +254,7 @@ export default function App() {
               <div className="flex flex-wrap gap-2 items-center mb-2 px-1">
                 {attached.map((n, i) => (
                   <span key={i} className="inline-flex items-center gap-1.5 text-[12px] bg-white/[0.06] border border-white/10 px-2.5 py-1 rounded-lg text-white/70">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
-                    {n}
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>{n}
                   </span>
                 ))}
                 {uploading && <span className="text-[12px] text-indigo-300">Indexing…</span>}
@@ -242,20 +262,29 @@ export default function App() {
               </div>
             )}
             <div className="flex items-end gap-2 bg-[#1a1a1d] border border-white/10 rounded-2xl px-2.5 py-2 focus-within:border-white/25 transition">
-              <label className="cursor-pointer w-9 h-9 rounded-lg flex items-center justify-center text-white/50 hover:text-white hover:bg-white/[0.06] transition" title="Attach PDF">
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
-                <input type="file" accept=".pdf" multiple hidden onChange={onPickFiles} />
-              </label>
+              {/* + menu */}
+              <div className="relative">
+                {showPlus && (
+                  <>
+                    <div className="fixed inset-0 z-10" onClick={() => setShowPlus(false)} />
+                    <div className="absolute bottom-11 left-0 z-20 w-44 bg-[#202024] border border-white/10 rounded-xl p-1.5 shadow-2xl">
+                      <button onClick={() => { setShowPlus(false); fileRef.current?.click(); }} className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg hover:bg-white/[0.06] text-sm text-white/80 transition">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>Upload PDF
+                      </button>
+                    </div>
+                  </>
+                )}
+                <button onClick={() => setShowPlus(!showPlus)} className="w-9 h-9 rounded-lg flex items-center justify-center text-white/50 hover:text-white hover:bg-white/[0.06] transition" title="Add">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+              </div>
               <textarea value={question} onChange={(e) => setQuestion(e.target.value)} rows={1}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); } }}
-                placeholder="Message DocMind…"
-                className="flex-1 bg-transparent outline-none resize-none text-[15px] py-1.5 max-h-40 placeholder:text-white/30" />
-              <button onClick={toggleVoice} title="Voice input"
-                className={`w-9 h-9 rounded-lg flex items-center justify-center transition ${listening ? "bg-indigo-500 text-white" : "text-white/50 hover:text-white hover:bg-white/[0.06]"}`}>
+                placeholder="Message DocMind…" className="flex-1 bg-transparent outline-none resize-none text-[15px] py-1.5 max-h-40 placeholder:text-white/30" />
+              <button onClick={toggleVoice} title="Voice input" className={`w-9 h-9 rounded-lg flex items-center justify-center transition ${listening ? "bg-indigo-500 text-white" : "text-white/50 hover:text-white hover:bg-white/[0.06]"}`}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4"/></svg>
               </button>
-              <button onClick={() => ask()} disabled={loading || !question.trim()}
-                className="w-9 h-9 rounded-lg bg-indigo-500 hover:bg-indigo-400 disabled:opacity-30 disabled:hover:bg-indigo-500 flex items-center justify-center transition text-white">
+              <button onClick={() => ask()} disabled={loading || !question.trim()} className="w-9 h-9 rounded-lg bg-indigo-500 hover:bg-indigo-400 disabled:opacity-30 disabled:hover:bg-indigo-500 flex items-center justify-center transition text-white">
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
               </button>
             </div>
@@ -263,6 +292,31 @@ export default function App() {
           </div>
         </div>
       </main>
+
+      {/* Settings modal */}
+      {showSettings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" onClick={() => setShowSettings(false)}>
+          <div className="bg-[#1a1a1d] border border-white/10 rounded-2xl w-full max-w-md p-5" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-5">
+              <h2 className="text-lg font-semibold">Settings</h2>
+              <button onClick={() => setShowSettings(false)} className="text-white/40 hover:text-white transition">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+              </button>
+            </div>
+            <div className="flex items-center justify-between py-3 border-b border-white/[0.06]">
+              <span className="text-sm text-white/70">Default model</span>
+              <select value={model} onChange={(e) => setModel(e.target.value)} className="bg-[#0d0d0f] border border-white/10 rounded-lg px-3 py-1.5 text-sm outline-none cursor-pointer">
+                <option style={{ color: "#000" }} value="gemini-2.5-flash-lite">Flash-Lite</option>
+                <option style={{ color: "#000" }} value="gemini-2.5-flash">Flash</option>
+              </select>
+            </div>
+            <div className="flex items-center justify-between py-3">
+              <span className="text-sm text-white/70">Clear all conversations</span>
+              <button onClick={clearAll} className="text-sm px-3 py-1.5 rounded-lg bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 transition">Clear</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
