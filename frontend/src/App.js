@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
 
-const API = "http://127.0.0.1:8000";
+const API = "https://docmind-12ms.onrender.com";
 
 /* ---------- tiny markdown renderer (no npm install) ---------- */
 function inline(text, k0 = 0) {
