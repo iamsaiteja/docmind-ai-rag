@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
+    "@tsparticles/react": "^4.2.1",
+    "@tsparticles/slim": "^4.2.1",
+    "framer-motion": "^12.40.0",
+    "three": "^0.184.0"
+  }
+}

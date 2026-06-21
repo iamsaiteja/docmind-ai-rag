@@ -1,5 +1,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import axios from "axios";
+import MouseOrb from "./components/MouseOrb";
+import ParticlesBg from "./components/ParticlesBg";
 
 const API = "https://docmind-12ms.onrender.com";
 const USER_NAME = "Sai Teja";
@@ -49,17 +51,40 @@ function Sources({ sources }) {
   const [open, setOpen] = useState(false);
   if (!sources || sources.length === 0) return null;
   return (
-    <div className="mt-3">
-      <button onClick={() => setOpen(!open)} className="text-[13px] text-white/45 hover:text-white/70 transition inline-flex items-center gap-1">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 01-8.49-8.49l9.19-9.19a4 4 0 015.66 5.66l-9.2 9.19a2 2 0 01-2.83-2.83l8.49-8.48"/></svg>
-        {sources.length} source{sources.length > 1 ? "s" : ""}
+    <div className="mt-4">
+      <button
+        onClick={() => setOpen(!open)}
+        className="inline-flex items-center gap-2 text-[13px] text-white/50 hover:text-white/80 transition"
+      >
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6" />
+        </svg>
+        <span className="font-medium">{sources.length} source{sources.length > 1 ? "s" : ""}</span>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+          className={`transition-transform ${open ? "rotate-180" : ""}`}>
+          <path d="M6 9l6 6 6-6" />
+        </svg>
       </button>
+
       {open && (
-        <div className="mt-2 space-y-1.5">
+        <div className="mt-3 grid gap-2">
           {sources.map((s, i) => (
-            <div key={i} className="rounded-lg glass-light border border-white/[0.08] px-3 py-2 text-[13px]">
-              <span className="text-indigo-300 font-medium">{s.source}</span>
-              <p className="text-white/40 mt-1 leading-relaxed">{s.snippet}</p>
+            <div key={i}
+              className="flex gap-3 rounded-xl glass-light border border-white/[0.08] px-3.5 py-3 hover:border-indigo-400/40 hover:bg-white/[0.05] transition">
+              <div className="w-8 h-8 shrink-0 rounded-lg bg-indigo-500/15 border border-indigo-400/20 flex items-center justify-center text-indigo-300">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6" />
+                </svg>
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[13px] font-semibold text-indigo-200 truncate">{s.source}</span>
+                  <span className="shrink-0 text-[10px] uppercase tracking-wider text-white/30 bg-white/[0.06] px-1.5 py-0.5 rounded">
+                    {i + 1}
+                  </span>
+                </div>
+                <p className="text-[12.5px] text-white/45 mt-1 leading-relaxed line-clamp-3">{s.snippet}</p>
+              </div>
             </div>
           ))}
         </div>
@@ -100,6 +125,7 @@ export default function App() {
     });
   };
   const newChat = () => { setMessages([]); setChatId(null); setError(""); setAttached([]); };
+  const removeAttached = (index) => setAttached((p) => p.filter((_, i) => i !== index));
   const loadChat = (c) => { setMessages(c.messages.map((m) => ({ ...m, animate: false }))); setChatId(c.id); setError(""); };
   const deleteChat = (id, e) => { e.stopPropagation(); setChats((p) => p.filter((c) => c.id !== id)); if (id === chatId) newChat(); };
   const clearAll = () => { setChats([]); newChat(); setShowSettings(false); };
@@ -147,8 +173,17 @@ export default function App() {
   const samples = ["Summarize this document", "Explain like I'm 5", "List the key points"];
 
   return (
-    <div className="flex h-screen bg-[#07070b] text-[#ececee] font-sans antialiased relative">
+    <div className="flex h-screen bg-[#0b0a0d] text-[#ececee] font-sans antialiased relative">
+
+      
+
+      <MouseOrb />
+      <ParticlesBg />
+      
+      
+
       <input type="file" accept=".pdf" multiple hidden ref={fileRef} onChange={onPickFiles} />
+
 
       {/* ── Animated water-light background ── */}
       <div className="bg-blob bg-blob-1" />
@@ -157,7 +192,7 @@ export default function App() {
       <div className="bg-blob bg-blob-4" />
 
       {/* ── Sidebar ── */}
-      <aside className="w-64 shrink-0 glass border-r border-white/[0.07] flex flex-col p-3 relative z-10">
+      <aside className="w-72 shrink-0 glass border-r border-white/[0.07] flex flex-col p-3 relative z-10">
         <div className="flex items-center gap-2 px-2 py-3">
           <div className="w-7 h-7 rounded-lg glossy-icon logo-glow flex items-center justify-center text-white text-sm font-bold">D</div>
           <span className="font-semibold tracking-tight shimmer-text">DocMind</span>
@@ -225,7 +260,7 @@ export default function App() {
         </header>
 
         <div className="flex-1 overflow-y-auto">
-          <div className="max-w-3xl mx-auto px-5 py-8">
+          <div className="max-w-5xl mx-auto px-5 py-8">
             {messages.length === 0 && !loading ? (
               <div className="flex flex-col items-center justify-center text-center mt-24">
                 <div className="w-14 h-14 rounded-2xl glossy-icon logo-float logo-glow flex items-center justify-center text-white text-2xl font-bold mb-5">D</div>
@@ -284,7 +319,12 @@ export default function App() {
               <div className="flex flex-wrap gap-2 items-center mb-2 px-1">
                 {attached.map((n, i) => (
                   <span key={i} className="inline-flex items-center gap-1.5 text-[12px] glass-light border border-white/[0.1] px-2.5 py-1 rounded-lg text-white/70">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>{n}
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
+                    <span className="truncate max-w-[140px]">{n}</span>
+                    <button onClick={() => removeAttached(i)} className="ml-0.5 text-white/40 hover:text-rose-300 transition" title="Remove">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                    </button>
+                    
                   </span>
                 ))}
                 {uploading && <span className="text-[12px] text-indigo-300">Indexing…</span>}
