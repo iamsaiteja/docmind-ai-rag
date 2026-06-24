@@ -9,21 +9,21 @@
 > An AI-powered document assistant built with RAG (Retrieval-Augmented Generation). Upload PDFs, ask questions, get answers grounded in your documents with source citations.
 
 **🔗 Live Demo:** [![Live Demo](https://img.shields.io/badge/Live-Demo-brightgreen)](https://docmind-mocha.vercel.app)
+# 🧠 DocMind
+
+AI-powered document assistant built with RAG.
+
 [![Live Demo](https://img.shields.io/badge/Live-Demo-brightgreen)](https://docmind-mocha.vercel.app)
-
 [![GitHub Repo](https://img.shields.io/badge/GitHub-Repository-black)](https://github.com/iamsaiteja/docmind)
-
 [![Python](https://img.shields.io/badge/Python-3.10+-blue)]()
-
 [![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688)]()
-
 [![React](https://img.shields.io/badge/React-Frontend-61DAFB)]()
-
 [![Gemini](https://img.shields.io/badge/Google-Gemini-orange)]()
-
 [![ChromaDB](https://img.shields.io/badge/VectorDB-ChromaDB-purple)]()
 
-[![License](https://img.shields.io/badge/License-MIT-yellow)]()
+![Stars](https://img.shields.io/github/stars/iamsaiteja/docmind)
+![Forks](https://img.shields.io/github/forks/iamsaiteja/docmind)
+![Issues](https://img.shields.io/github/issues/iamsaiteja/docmind)
 
 ---
 
