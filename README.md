@@ -1,5 +1,11 @@
 # DocMind 🧠
 
+## 📸 Screenshots
+
+### Home Page
+
+![Home](home.png)
+
 > An AI-powered document assistant built with RAG (Retrieval-Augmented Generation). Upload PDFs, ask questions, get answers grounded in your documents with source citations.
 
 **🔗 Live Demo:** [![Live Demo](https://img.shields.io/badge/Live-Demo-brightgreen)](https://docmind-mocha.vercel.app)
