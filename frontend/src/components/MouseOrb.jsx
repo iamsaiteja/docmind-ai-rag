@@ -1,10 +1,24 @@
 import React, { useEffect, useRef, useState } from "react";
 
+/**
+ * Cursor orb effect — desktop only.
+ * Skipped entirely on touch devices (no listeners, no animation loop).
+ */
 export default function MouseOrb() {
   const orbRef = useRef(null);
   const [ripples, setRipples] = useState([]);
+  const [enabled, setEnabled] = useState(false);
 
   useEffect(() => {
+    // Touch devices: bail out completely. Saves CPU, avoids touch-jank.
+    const isTouch =
+      "ontouchstart" in window ||
+      navigator.maxTouchPoints > 0 ||
+      window.matchMedia("(hover: none)").matches;
+    if (isTouch) return;
+
+    setEnabled(true);
+
     let x = window.innerWidth / 2;
     let y = window.innerHeight / 2;
     let tx = x, ty = y;
@@ -28,7 +42,6 @@ export default function MouseOrb() {
       x += (tx - x) * 0.18;
       y += (ty - y) * 0.18;
 
-      // Shift hue based on movement
       const moving = Date.now() - lastMove < 100;
       hue = (hue + (moving ? 2.5 : 0.4)) % 360;
 
@@ -55,6 +68,8 @@ export default function MouseOrb() {
       cancelAnimationFrame(raf);
     };
   }, []);
+
+  if (!enabled) return null;
 
   return (
     <>
