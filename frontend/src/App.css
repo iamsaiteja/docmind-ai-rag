@@ -22,6 +22,8 @@
 .border-accent-20    { border-color: rgba(var(--accent), .20); }
 .border-accent-40    { border-color: rgba(var(--accent), .40); }
 .hover\:border-accent-40:hover { border-color: rgba(var(--accent), .40); }
+.decoration-accent-40 { text-decoration-color: rgba(var(--accent), .40); }
+.hover\:decoration-accent-strong:hover { text-decoration-color: rgb(var(--accent)); }
 
 /* Safer mobile dynamic viewport units (older browsers fallback to vh) */
 @supports not (height: 100dvh) {
