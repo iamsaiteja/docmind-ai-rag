@@ -20,6 +20,7 @@ const STRINGS = {
     pin: "Pin", unpin: "Unpin", copy: "Copy", copied: "Copied!",
     regenerate: "Regenerate", edit: "Edit", save: "Save", cancel: "Cancel",
     stop: "Stop", exportChat: "Export chat", deleteChat: "Delete",
+    rename: "Rename", thinking: "Thinking…",
     summarize: "Summarize this document", explainEli5: "Explain like I'm 5",
     listKeyPoints: "List the key points",
     sourcesLabel: "source", indexing: "Indexing…",
@@ -42,6 +43,7 @@ const STRINGS = {
     pin: "Pin", unpin: "Unpin teesey", copy: "Copy", copied: "Copy ayyindi!",
     regenerate: "Marala generate", edit: "Edit", save: "Save", cancel: "Cancel",
     stop: "Aapu", exportChat: "Chat export", deleteChat: "Delete",
+    rename: "Peru maarchu", thinking: "Aalochistunna…",
     summarize: "Ee document summarize chey", explainEli5: "5 years pillodiki cheppinattu cheppu",
     listKeyPoints: "Mukhya points list chey",
     sourcesLabel: "source", indexing: "Indexing avtundi…",
@@ -64,6 +66,7 @@ const STRINGS = {
     pin: "Pin", unpin: "Unpin", copy: "Copy", copied: "Copy ho gaya!",
     regenerate: "Phir se", edit: "Edit", save: "Save", cancel: "Cancel",
     stop: "Rok do", exportChat: "Chat export", deleteChat: "Delete",
+    rename: "Naam badlo", thinking: "Soch raha hoon…",
     summarize: "Is document ko summarize karo", explainEli5: "5 saal ke bachche ko samjhao",
     listKeyPoints: "Mukhya points list karo",
     sourcesLabel: "source", indexing: "Indexing ho rahi hai…",
@@ -104,15 +107,31 @@ const LS = {
 ════════════════════════════════════════════════════════ */
 function inline(text, k0 = 0) {
   const parts = [];
-  const regex = /(\*\*[^*]+\*\*|`[^`]+`)/g;
+  const regex = /(`[^`]+`|\[[^\]]+\]\((?:https?:\/\/|mailto:)[^)\s]+\)|\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|\*[^*\n]+\*|~~[^~]+~~)/g;
   let last = 0, m, key = k0;
   while ((m = regex.exec(text)) !== null) {
     if (m.index > last) parts.push(text.slice(last, m.index));
     const tok = m[0];
-    if (tok.startsWith("**"))
-      parts.push(<strong key={key++} className="font-semibold text-white">{tok.slice(2, -2)}</strong>);
-    else
+    if (tok.startsWith("`"))
       parts.push(<code key={key++} className="px-1.5 py-0.5 rounded bg-white/10 text-accent-soft text-[13px]">{tok.slice(1, -1)}</code>);
+    else if (tok.startsWith("[")) {
+      const mid = tok.indexOf("](");
+      const label = tok.slice(1, mid), href = tok.slice(mid + 2, -1);
+      parts.push(
+        <a key={key++} href={href} target="_blank" rel="noopener noreferrer"
+          className="text-accent-strong underline underline-offset-2 decoration-accent-40 hover:decoration-accent-strong transition">
+          {label}
+        </a>
+      );
+    }
+    else if (tok.startsWith("***"))
+      parts.push(<strong key={key++} className="font-semibold italic text-white">{tok.slice(3, -3)}</strong>);
+    else if (tok.startsWith("**"))
+      parts.push(<strong key={key++} className="font-semibold text-white">{tok.slice(2, -2)}</strong>);
+    else if (tok.startsWith("~~"))
+      parts.push(<del key={key++} className="text-white/50">{tok.slice(2, -2)}</del>);
+    else
+      parts.push(<em key={key++} className="italic text-white/90">{tok.slice(1, -1)}</em>);
     last = m.index + tok.length;
   }
   if (last < text.length) parts.push(text.slice(last));
@@ -150,30 +169,113 @@ function CodeBlock({ lang, code, t }) {
 /* ════════════════════════════════════════════════════════
    Text block (paragraphs, lists, headings)
 ════════════════════════════════════════════════════════ */
+function TableBlock({ rows, k }) {
+  const parseRow = (line) =>
+    line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
+  const header = parseRow(rows[0]);
+  const body = rows.slice(2).map(parseRow);
+  return (
+    <div key={k} className="my-3 overflow-x-auto rounded-xl border border-white/[0.08]">
+      <table className="w-full text-[13.5px] border-collapse">
+        <thead>
+          <tr className="bg-white/[0.05]">
+            {header.map((h, i) => (
+              <th key={i} className="text-left font-semibold text-white px-3.5 py-2 border-b border-white/[0.08] whitespace-nowrap">
+                {inline(h, i * 50)}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {body.map((r, ri) => (
+            <tr key={ri} className="odd:bg-transparent even:bg-white/[0.02] hover:bg-white/[0.04] transition">
+              {header.map((_, ci) => (
+                <td key={ci} className="px-3.5 py-2 border-b border-white/[0.05] text-white/75 align-top">
+                  {inline(r[ci] ?? "", ri * 100 + ci)}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function TextBlock({ text }) {
   const lines = text.split("\n");
   const blocks = [];
-  let list = [];
-  const flush = () => {
-    if (list.length) {
-      blocks.push(<ul key={"u" + blocks.length} className="list-disc pl-5 space-y-1.5 my-2.5 marker:text-white/30">{list}</ul>);
-      list = [];
+  let ul = [], ol = [], quote = [], table = [];
+
+  const flushUl = () => {
+    if (ul.length) {
+      blocks.push(<ul key={"u" + blocks.length} className="list-disc pl-5 space-y-1.5 my-2.5 marker:text-white/30">{ul}</ul>);
+      ul = [];
     }
   };
+  const flushOl = () => {
+    if (ol.length) {
+      blocks.push(<ol key={"o" + blocks.length} className="list-decimal pl-5 space-y-1.5 my-2.5 marker:text-white/40">{ol}</ol>);
+      ol = [];
+    }
+  };
+  const flushQuote = () => {
+    if (quote.length) {
+      blocks.push(
+        <blockquote key={"q" + blocks.length}
+          className="my-2.5 pl-3.5 border-l-2 border-accent-40 text-white/60 italic space-y-1">
+          {quote}
+        </blockquote>
+      );
+      quote = [];
+    }
+  };
+  const flushTable = () => {
+    if (table.length >= 2 && /^\s*\|?[\s:|-]+\|?\s*$/.test(table[1])) {
+      blocks.push(<TableBlock key={"t" + blocks.length} k={"t" + blocks.length} rows={table} />);
+    } else {
+      table.forEach((line, i) =>
+        blocks.push(<p key={"tp" + blocks.length + "_" + i} className="mb-2.5">{inline(line, i * 100)}</p>)
+      );
+    }
+    table = [];
+  };
+  const flushAll = () => { flushUl(); flushOl(); flushQuote(); flushTable(); };
+
   lines.forEach((line, i) => {
     const tx = line.trim();
-    if (/^[*-]\s+/.test(tx))
-      list.push(<li key={i} className="pl-1">{inline(tx.replace(/^[*-]\s+/, ""), i * 100)}</li>);
-    else if (tx === "") flush();
-    else if (/^#{1,3}\s/.test(tx)) {
-      flush();
-      blocks.push(<p key={i} className="font-semibold text-[15px] mt-3 mb-1.5 text-white">{inline(tx.replace(/^#{1,3}\s/, ""), i * 100)}</p>);
+    const isTableLine = /^\|.*\|/.test(tx);
+
+    if (table.length && !isTableLine) flushTable();
+
+    if (isTableLine) {
+      flushUl(); flushOl(); flushQuote();
+      table.push(tx);
+    } else if (/^[*-]\s+/.test(tx)) {
+      flushOl(); flushQuote();
+      ul.push(<li key={i} className="pl-1">{inline(tx.replace(/^[*-]\s+/, ""), i * 100)}</li>);
+    } else if (/^\d+[.)]\s+/.test(tx)) {
+      flushUl(); flushQuote();
+      ol.push(<li key={i} className="pl-1">{inline(tx.replace(/^\d+[.)]\s+/, ""), i * 100)}</li>);
+    } else if (/^>\s?/.test(tx)) {
+      flushUl(); flushOl();
+      quote.push(<p key={i}>{inline(tx.replace(/^>\s?/, ""), i * 100)}</p>);
+    } else if (/^(-{3,}|\*{3,}|_{3,})$/.test(tx)) {
+      flushAll();
+      blocks.push(<hr key={i} className="my-4 border-white/[0.08]" />);
+    } else if (tx === "") {
+      flushAll();
+    } else if (/^#{1,4}\s/.test(tx)) {
+      flushAll();
+      const level = tx.match(/^#+/)[0].length;
+      const size = level === 1 ? "text-[17px]" : level === 2 ? "text-[16px]" : "text-[15px]";
+      blocks.push(<p key={i} className={`font-semibold ${size} mt-3 mb-1.5 text-white`}>{inline(tx.replace(/^#{1,4}\s/, ""), i * 100)}</p>);
     } else {
-      flush();
+      flushUl(); flushOl(); flushQuote();
       blocks.push(<p key={i} className="mb-2.5">{inline(tx, i * 100)}</p>);
     }
   });
-  flush();
+  flushAll();
   return <>{blocks}</>;
 }
 
@@ -207,9 +309,10 @@ function Markdown({ text, t }) {
 /* ════════════════════════════════════════════════════════
    Assistant typing animation
 ════════════════════════════════════════════════════════ */
-function AssistantText({ text, animate, onTick, t }) {
+function AssistantText({ text, animate, streaming, onTick, t }) {
   const [shown, setShown] = useState(animate ? "" : text);
   useEffect(() => {
+    if (streaming) { onTick && onTick(); return; }
     if (!animate) { setShown(text); return; }
     let i = 0;
     const id = setInterval(() => {
@@ -219,7 +322,18 @@ function AssistantText({ text, animate, onTick, t }) {
       if (i >= text.length) { setShown(text); clearInterval(id); }
     }, 12);
     return () => clearInterval(id);
-  }, [text, animate]); // eslint-disable-line
+  }, [text, animate, streaming]); // eslint-disable-line
+
+  // Real streaming: render live markdown + blinking cursor (like ChatGPT)
+  if (streaming) {
+    return (
+      <div className="relative">
+        <Markdown text={text} t={t} />
+        <span className="inline-block w-[2px] h-[15px] align-middle bg-accent ml-0.5 animate-pulse" />
+      </div>
+    );
+  }
+
   const done = shown.length >= text.length;
   return done
     ? <Markdown text={text} t={t} />
@@ -352,6 +466,7 @@ export default function App() {
   const textareaRef = useRef(null);
   const scrollerRef = useRef(null);
   const abortRef  = useRef(null);
+  const streamRef = useRef(null);   // in-flight streamed answer (Stop press ki partial save)
 
   const scrollToBottom = () => bottomRef.current?.scrollIntoView({ behavior: "smooth" });
 
@@ -394,10 +509,26 @@ export default function App() {
       if (exists) return prev.map((c) => (c.id === id ? { ...c, messages: msgs, title: c.title || title } : c));
       return [{ id, title, messages: msgs, pinned: false }, ...prev];
     });
+    return id;
+  };
+
+  const renameChat = (id, title) => {
+    const clean = title.trim();
+    if (!clean) return;
+    setChats((p) => p.map((c) => (c.id === id ? { ...c, title: clean.slice(0, 60) } : c)));
+  };
+
+  // First exchange tarvata AI short title (ChatGPT laga) — fail ayite silent
+  const autoTitle = async (id, q, answer) => {
+    try {
+      const res = await axios.post(`${API}/generate-title`, { question: q, answer: answer.slice(0, 600) });
+      const title = (res.data?.title || "").trim();
+      if (title) setChats((prev) => prev.map((c) => (c.id === id ? { ...c, title } : c)));
+    } catch { /* old backend / offline — heuristic title untundi */ }
   };
 
   const loadChat = (c) => {
-    setMessages(c.messages.map((m) => ({ ...m, animate: false })));
+    setMessages(c.messages.map((m) => ({ ...m, animate: false, streaming: false })));
     setChatId(c.id); setError(""); setSidebarOpen(false); setEditingIdx(null);
   };
   const deleteChat = (id, e) => {
@@ -450,6 +581,54 @@ export default function App() {
   };
 
   /* ── ask / regenerate / edit / stop ─────────────────── */
+
+  // Real-time streaming via SSE (like ChatGPT). Throws "no-stream" if the
+  // backend doesn't support it yet, so the caller can fall back to /ask.
+  const askStream = async (q, history, base, controller) => {
+    const res = await fetch(`${API}/ask-stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question: q, model, history }),
+      signal: controller.signal,
+    });
+    if (!res.ok || !res.body) throw new Error("no-stream");
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "", content = "", sources = [];
+    streamRef.current = { content: "", sources: [] };
+    setMessages([...base, { role: "assistant", content: "", sources: [], streaming: true }]);
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const events = buf.split("\n\n");
+      buf = events.pop();
+      for (const ev of events) {
+        const line = ev.split("\n").find((l) => l.startsWith("data: "));
+        if (!line) continue;
+        let data;
+        try { data = JSON.parse(line.slice(6)); } catch { continue; }
+        if (data.type === "sources") {
+          sources = data.sources || [];
+        } else if (data.type === "delta") {
+          content += data.text;
+          streamRef.current = { content, sources };
+          setMessages([...base, { role: "assistant", content, sources, streaming: true }]);
+        } else if (data.type === "error") {
+          if (content) break;               // partial answer vachindi — keep it
+          throw new Error(data.message || "stream error");
+        }
+      }
+    }
+
+    if (!content.trim()) throw new Error("no-stream");
+    const final = [...base, { role: "assistant", content, sources, animate: false }];
+    setMessages(final);
+    return { content, final };
+  };
+
   const ask = async (preset, startMessages) => {
     const q = (preset ?? question).trim();
     if (!q || loading) return;
@@ -464,34 +643,67 @@ export default function App() {
 
     const controller = new AbortController();
     abortRef.current = controller;
+    const isFirstExchange = !start.some((m) => m.role === "user");
+
+    // Conversation memory — last 8 turns backend ki
+    const history = start
+      .filter((m) => !m.isError && m.content)
+      .slice(-8)
+      .map((m) => ({ role: m.role, content: m.content }));
+
+    const finish = (final, answer) => {
+      const id = saveChat(final);
+      if (isFirstExchange && answer) autoTitle(id, q, answer);
+    };
 
     try {
-      const res = await axios.post(
-        `${API}/ask`,
-        { question: q, model },
-        { signal: controller.signal }
-      );
-      if (res.data.error) throw new Error(res.data.error);
-      const final = [...base, {
-        role: "assistant",
-        content: res.data.answer,
-        sources: res.data.sources || [],
-        animate: true,
-      }];
-      setMessages(final); saveChat(final);
+      const { content, final } = await askStream(q, history, base, controller);
+      finish(final, content);
     } catch (e) {
-      if (e.name === "CanceledError" || axios.isCancel?.(e)) {
-        // user pressed Stop; just clean up
-        saveChat(base);
+      const aborted = e.name === "AbortError" || e.name === "CanceledError" || axios.isCancel?.(e);
+      if (aborted) {
+        // Stop pressed — partial streamed answer unte keep it
+        const partial = streamRef.current;
+        if (partial?.content) {
+          const final = [...base, { role: "assistant", content: partial.content, sources: partial.sources, animate: false }];
+          setMessages(final); finish(final, partial.content);
+        } else {
+          setMessages(base); saveChat(base);
+        }
+        streamRef.current = null;
         setLoading(false);
         abortRef.current = null;
         return;
       }
-      let msg = e.response?.data?.detail || e.message || "Backend not reachable";
-      if (msg.includes("429") || msg.toLowerCase().includes("quota")) msg = t.rateLimit;
-      const errMsgs = [...base, { role: "assistant", content: msg, sources: [], isError: true }];
-      setMessages(errMsgs); saveChat(errMsgs);
+
+      // Streaming fail — old /ask endpoint ki fallback (backward compatible)
+      try {
+        const res = await axios.post(
+          `${API}/ask`,
+          { question: q, model, history },
+          { signal: controller.signal }
+        );
+        if (res.data.error) throw new Error(res.data.error);
+        const final = [...base, {
+          role: "assistant",
+          content: res.data.answer,
+          sources: res.data.sources || [],
+          animate: true,
+        }];
+        setMessages(final); finish(final, res.data.answer);
+      } catch (e2) {
+        if (e2.name === "CanceledError" || axios.isCancel?.(e2)) {
+          setMessages(base); saveChat(base);
+          setLoading(false); abortRef.current = null;
+          return;
+        }
+        let msg = e2.response?.data?.detail || e2.message || "Backend not reachable";
+        if (msg.includes("429") || msg.toLowerCase().includes("quota")) msg = t.rateLimit;
+        const errMsgs = [...base, { role: "assistant", content: msg, sources: [], isError: true }];
+        setMessages(errMsgs); saveChat(errMsgs);
+      }
     } finally {
+      streamRef.current = null;
       setLoading(false);
       abortRef.current = null;
     }
@@ -641,7 +853,7 @@ export default function App() {
               <p className="px-2 text-[11px] uppercase tracking-wider text-white/30 mb-1 mt-1">{t.pinned}</p>
               {pinnedChats.map((c) => (
                 <ChatItem key={c.id} c={c} active={c.id === chatId}
-                  onClick={() => loadChat(c)} onPin={togglePin} onDel={deleteChat} t={t} />
+                  onClick={() => loadChat(c)} onPin={togglePin} onDel={deleteChat} onRename={renameChat} t={t} />
               ))}
             </>
           )}
@@ -651,7 +863,7 @@ export default function App() {
           )}
           {otherChats.map((c) => (
             <ChatItem key={c.id} c={c} active={c.id === chatId}
-              onClick={() => loadChat(c)} onPin={togglePin} onDel={deleteChat} t={t} />
+              onClick={() => loadChat(c)} onPin={togglePin} onDel={deleteChat} onRename={renameChat} t={t} />
           ))}
         </div>
 
@@ -786,10 +998,10 @@ export default function App() {
                       <div className="min-w-0 flex-1">
                         {m.isError
                           ? <div className="text-[15px] text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-xl px-4 py-2.5">{m.content}</div>
-                          : <AssistantText text={m.content} animate={m.animate} onTick={scrollToBottom} t={t} />
+                          : <AssistantText text={m.content} animate={m.animate} streaming={m.streaming} onTick={scrollToBottom} t={t} />
                         }
-                        {!m.isError && <Sources sources={m.sources} t={t} />}
-                        {!m.isError && !m.animate && !loading && (
+                        {!m.isError && !m.streaming && <Sources sources={m.sources} t={t} />}
+                        {!m.isError && !m.streaming && !m.animate && !loading && (
                           <MessageActions
                             content={m.content}
                             onRegenerate={() => regenerate(i)}
@@ -801,13 +1013,16 @@ export default function App() {
                   );
                 })}
 
-                {loading && (
+                {loading && !messages[messages.length - 1]?.streaming && (
                   <div className="flex gap-2.5 md:gap-3">
                     <div className="w-7 h-7 rounded-lg glossy-icon logo-glow shrink-0 flex items-center justify-center text-white text-xs font-bold">D</div>
-                    <div className="flex items-center gap-1.5 mt-2.5">
-                      {[0, 1, 2].map((d) => (
-                        <span key={d} className="w-2 h-2 rounded-full bg-accent water-dot" style={{ animationDelay: `${d * 0.18}s` }} />
-                      ))}
+                    <div className="flex items-center gap-2 mt-2.5">
+                      <div className="flex items-center gap-1.5">
+                        {[0, 1, 2].map((d) => (
+                          <span key={d} className="w-2 h-2 rounded-full bg-accent water-dot" style={{ animationDelay: `${d * 0.18}s` }} />
+                        ))}
+                      </div>
+                      <span className="text-[13px] text-white/35">{t.thinking}</span>
                     </div>
                   </div>
                 )}
@@ -1001,11 +1216,44 @@ export default function App() {
 /* ════════════════════════════════════════════════════════
    Sidebar chat item (with pin + delete)
 ════════════════════════════════════════════════════════ */
-function ChatItem({ c, active, onClick, onPin, onDel, t }) {
+function ChatItem({ c, active, onClick, onPin, onDel, onRename, t }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(c.title);
+
+  const startRename = (e) => {
+    e.stopPropagation();
+    setDraft(c.title);
+    setEditing(true);
+  };
+  const commit = () => {
+    setEditing(false);
+    if (draft.trim() && draft.trim() !== c.title) onRename(c.id, draft);
+  };
+
+  if (editing) {
+    return (
+      <div className="px-2 py-1.5">
+        <input
+          autoFocus
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") commit();
+            if (e.key === "Escape") setEditing(false);
+          }}
+          onClick={(e) => e.stopPropagation()}
+          maxLength={60}
+          className="w-full bg-white/[0.06] border border-accent-40 rounded-lg px-2 py-1.5 text-sm outline-none text-white"
+        />
+      </div>
+    );
+  }
+
   return (
     <div onClick={onClick}
       className={`group flex items-center justify-between gap-1 px-2.5 py-2 rounded-lg cursor-pointer text-sm transition ${active ? "chat-active text-white" : "text-white/55 hover:bg-white/[0.04]"}`}>
-      <div className="flex items-center gap-1.5 min-w-0 flex-1">
+      <div className="flex items-center gap-1.5 min-w-0 flex-1" onDoubleClick={startRename}>
         {c.pinned && (
           <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" className="text-accent-strong shrink-0">
             <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 16.8 5.8 21.3l2.4-7.4L2 9.4h7.6z"/>
@@ -1014,6 +1262,11 @@ function ChatItem({ c, active, onClick, onPin, onDel, t }) {
         <span className="truncate">{c.title}</span>
       </div>
       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition">
+        <button onClick={startRename}
+          className="p-1 rounded text-white/30 hover:text-white/80 transition"
+          title={t.rename}>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        </button>
         <button onClick={(e) => onPin(c.id, e)}
           className="p-1 rounded text-white/30 hover:text-white/80 transition"
           title={c.pinned ? t.unpin : t.pin}>

@@ -29,9 +29,13 @@ AI-powered document assistant built with RAG.
 
 ## ✨ Features
 
+- ⚡ **Real-time Streaming** — Answers stream word-by-word as they're generated (SSE), just like ChatGPT
+- 🧠 **Conversation Memory** — Follow-up questions understand context ("explain that more", "what about it?")
 - 📄 **Multi-PDF Upload** — Upload and query multiple documents simultaneously
 - 💬 **Conversational Q&A** — Natural language questions over your documents
 - 🔍 **Source Citations** — Every answer is grounded with the exact source chunks
+- 📝 **Rich Markdown** — Tables, links, numbered lists, blockquotes, code blocks with copy
+- 🏷️ **AI Chat Titles** — Chats are auto-named by AI after the first exchange, with inline rename
 - 🎙️ **Voice Input** — Ask questions via speech recognition
 - 🎨 **Model Selection** — Switch between Gemini Flash and Flash-Lite
 - 💾 **Chat History** — Conversations persist across sessions (localStorage)
@@ -132,7 +136,9 @@ Frontend runs on `(https://docmind-mocha.vercel.app/)`.
 |--------|----------|-------------|
 | `GET`  | `/` | Health check |
 | `POST` | `/upload-pdf` | Upload PDF(s), extract + embed + store |
-| `POST` | `/ask` | Query the document store with a question |
+| `POST` | `/ask` | Query the document store with a question (supports `history` for multi-turn) |
+| `POST` | `/ask-stream` | Same as `/ask` but streams the answer in real time (SSE) |
+| `POST` | `/generate-title` | Generate a short AI title for a chat |
 
 **Example request:**
 ```bash
@@ -146,7 +152,8 @@ curl -X POST https://docmind-12ms.onrender.com/ask \
 ## 🗺️ Roadmap
 
 - [ ] JWT authentication + per-user data isolation
-- [ ] Streaming responses (Server-Sent Events)
+- [x] Streaming responses (Server-Sent Events)
+- [x] Conversation memory (multi-turn context)
 - [ ] Page-level citations with PDF highlighting
 - [ ] Background async indexing for large PDFs (Celery + Redis)
 - [ ] Migrate to Pinecone for production-grade vector search
