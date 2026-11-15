@@ -1,6 +1,6 @@
-# DocMind 🧠
+# DocMind 
 
-## 📸 Screenshots
+##  Screenshots
 
 ### Home Page
 
@@ -8,8 +8,8 @@
 
 > An AI-powered document assistant built with RAG (Retrieval-Augmented Generation). Upload PDFs, ask questions, get answers grounded in your documents with source citations.
 
-**🔗 Live Demo:** [![Live Demo](https://img.shields.io/badge/Live-Demo-brightgreen)](https://docmind-mocha.vercel.app)
-# 🧠 DocMind
+** Live Demo:** [![Live Demo](https://img.shields.io/badge/Live-Demo-brightgreen)](https://docmind-mocha.vercel.app)
+#  DocMind
 
 AI-powered document assistant built with RAG.
 
@@ -27,23 +27,23 @@ AI-powered document assistant built with RAG.
 
 ---
 
-## ✨ Features
+##  Features
 
-- ⚡ **Real-time Streaming** — Answers stream word-by-word as they're generated (SSE), just like ChatGPT
-- 🧠 **Conversation Memory** — Follow-up questions understand context ("explain that more", "what about it?")
-- 📄 **Multi-PDF Upload** — Upload and query multiple documents simultaneously
-- 💬 **Conversational Q&A** — Natural language questions over your documents
-- 🔍 **Source Citations** — Every answer is grounded with the exact source chunks
-- 📝 **Rich Markdown** — Tables, links, numbered lists, blockquotes, code blocks with copy
-- 🏷️ **AI Chat Titles** — Chats are auto-named by AI after the first exchange, with inline rename
-- 🎙️ **Voice Input** — Ask questions via speech recognition
-- 🎨 **Model Selection** — Switch between Gemini Flash and Flash-Lite
-- 💾 **Chat History** — Conversations persist across sessions (localStorage)
-- 🌙 **Modern UI** — Dark theme with liquid-glass animations
+-  **Real-time Streaming** — Answers stream word-by-word as they're generated (SSE), just like ChatGPT
+-  **Conversation Memory** — Follow-up questions understand context ("explain that more", "what about it?")
+-  **Multi-PDF Upload** — Upload and query multiple documents simultaneously
+-  **Conversational Q&A** — Natural language questions over your documents
+-  **Source Citations** — Every answer is grounded with the exact source chunks
+-  **Rich Markdown** — Tables, links, numbered lists, blockquotes, code blocks with copy
+-  **AI Chat Titles** — Chats are auto-named by AI after the first exchange, with inline rename
+-  **Voice Input** — Ask questions via speech recognition
+-  **Model Selection** — Switch between Gemini Flash and Flash-Lite
+-  **Chat History** — Conversations persist across sessions (localStorage)
+-  **Modern UI** — Dark theme with liquid-glass animations
 
 ---
 
-## 🏗️ Architecture
+##  Architecture
 
 ┌─────────────────┐         ┌──────────────────┐         ┌───────────────┐
 
@@ -74,7 +74,7 @@ AI-powered document assistant built with RAG.
 
 ---
 
-## 🛠️ Tech Stack
+##  Tech Stack
 
 ### Backend
 - **FastAPI** — Async Python web framework
@@ -97,7 +97,7 @@ AI-powered document assistant built with RAG.
 
 ---
 
-## 🚀 Local Setup
+##  Local Setup
 
 ### Prerequisites
 - Python 3.10+
@@ -130,7 +130,7 @@ Frontend runs on `(https://docmind-mocha.vercel.app/)`.
 
 ---
 
-## 📡 API Endpoints
+## API Endpoints
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
@@ -149,7 +149,7 @@ curl -X POST https://docmind-12ms.onrender.com/ask \
 
 ---
 
-## 🗺️ Roadmap
+## Roadmap
 
 - [ ] JWT authentication + per-user data isolation
 - [x] Streaming responses (Server-Sent Events)
@@ -197,20 +197,20 @@ docmind/
 
 ---
 
-## 👨‍💻 Author
+##  Author
 
 **Sai Teja Golla**
-- 💼 LinkedIn: [@golla-saiteja](https://www.linkedin.com/in/golla-saiteja)
-- 🐙 GitHub: [@iamsaiteja](https://github.com/iamsaiteja)
-- 📧 tejayadav872@gmail.com
+-  LinkedIn: [@golla-saiteja](https://www.linkedin.com/in/golla-saiteja)
+-  GitHub: [@iamsaiteja](https://github.com/iamsaiteja)
+-  tejayadav872@gmail.com
 
 ---
 
-## 📜 License
+##  License
 
 MIT License — feel free to learn from this and build your own version.
 
 ---
 
-⭐ If you found this useful, give it a star!
+ If you found this useful, give it a star!
 
