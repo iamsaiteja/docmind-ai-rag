@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useCallback } from "react";
 import axios from "axios";
 import MouseOrb from "./components/MouseOrb";
 
-const API = "https://docmind-12ms.onrender.com";
+import { API, apiPost, sessionHeaders } from "./apiClient";
 
 /* ════════════════════════════════════════════════════════
    i18n — English / Telugu / Hindi
@@ -521,7 +521,7 @@ export default function App() {
   // First exchange tarvata AI short title (ChatGPT laga) — fail ayite silent
   const autoTitle = async (id, q, answer) => {
     try {
-      const res = await axios.post(`${API}/generate-title`, { question: q, answer: answer.slice(0, 600) });
+      const res = await apiPost("/generate-title", { question: q, answer: answer.slice(0, 600) });
       const title = (res.data?.title || "").trim();
       if (title) setChats((prev) => prev.map((c) => (c.id === id ? { ...c, title } : c)));
     } catch { /* old backend / offline — heuristic title untundi */ }
@@ -571,7 +571,7 @@ export default function App() {
     const fd = new FormData();
     picked.forEach((f) => fd.append("files", f));
     try {
-      const res = await axios.post(`${API}/upload-pdf`, fd);
+      const res = await apiPost("/upload-pdf", fd);
       setAttached((p) => [...p, ...(res.data.files || []).map((f) => f.filename)]);
     } catch (err) {
       setError(t.uploadFailed + (err.response?.data?.detail || err.message));
@@ -587,8 +587,8 @@ export default function App() {
   const askStream = async (q, history, base, controller) => {
     const res = await fetch(`${API}/ask-stream`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: q, model, history }),
+      headers: { "Content-Type": "application/json", ...(await sessionHeaders()) },
+      body: JSON.stringify({ question: q, model, history: history.slice(-10) }),
       signal: controller.signal,
     });
     if (!res.ok || !res.body) throw new Error("no-stream");
@@ -678,9 +678,9 @@ export default function App() {
 
       // Streaming fail — old /ask endpoint ki fallback (backward compatible)
       try {
-        const res = await axios.post(
-          `${API}/ask`,
-          { question: q, model, history },
+        const res = await apiPost(
+          "/ask",
+          { question: q, model, history: history.slice(-10) },
           { signal: controller.signal }
         );
         if (res.data.error) throw new Error(res.data.error);

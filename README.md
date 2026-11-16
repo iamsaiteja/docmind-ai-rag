@@ -1,216 +1,53 @@
-# DocMind 
-
-##  Screenshots
-
-### Home Page
+# DocMind — session-isolated PDF assistant
+Upload PDFs, ask questions and receive streamed answers with document/page sources. FastAPI, React, ChromaDB and Gemini. [Existing demo](https://docmind-mocha.vercel.app) · [Repository](https://github.com/iamsaiteja/docmind-ai-rag)
 
 ![Home](home.png)
 
-> An AI-powered document assistant built with RAG (Retrieval-Augmented Generation). Upload PDFs, ask questions, get answers grounded in your documents with source citations.
-
-** Live Demo:** [![Live Demo](https://img.shields.io/badge/Live-Demo-brightgreen)](https://docmind-mocha.vercel.app)
-#  DocMind
-
-AI-powered document assistant built with RAG.
-
-[![Live Demo](https://img.shields.io/badge/Live-Demo-brightgreen)](https://docmind-mocha.vercel.app)
-[![GitHub Repo](https://img.shields.io/badge/GitHub-Repository-black)](https://github.com/iamsaiteja/docmind)
-[![Python](https://img.shields.io/badge/Python-3.10+-blue)]()
-[![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688)]()
-[![React](https://img.shields.io/badge/React-Frontend-61DAFB)]()
-[![Gemini](https://img.shields.io/badge/Google-Gemini-orange)]()
-[![ChromaDB](https://img.shields.io/badge/VectorDB-ChromaDB-purple)]()
-
-![Stars](https://img.shields.io/github/stars/iamsaiteja/docmind)
-![Forks](https://img.shields.io/github/forks/iamsaiteja/docmind)
-![Issues](https://img.shields.io/github/issues/iamsaiteja/docmind)
-
----
-
-##  Features
-
--  **Real-time Streaming** — Answers stream word-by-word as they're generated (SSE), just like ChatGPT
--  **Conversation Memory** — Follow-up questions understand context ("explain that more", "what about it?")
--  **Multi-PDF Upload** — Upload and query multiple documents simultaneously
--  **Conversational Q&A** — Natural language questions over your documents
--  **Source Citations** — Every answer is grounded with the exact source chunks
--  **Rich Markdown** — Tables, links, numbered lists, blockquotes, code blocks with copy
--  **AI Chat Titles** — Chats are auto-named by AI after the first exchange, with inline rename
--  **Voice Input** — Ask questions via speech recognition
--  **Model Selection** — Switch between Gemini Flash and Flash-Lite
--  **Chat History** — Conversations persist across sessions (localStorage)
--  **Modern UI** — Dark theme with liquid-glass animations
-
----
-
-##  Architecture
-
-┌─────────────────┐         ┌──────────────────┐         ┌───────────────┐
-
-│   React (UI)    │ ──────► │   FastAPI (API)  │ ──────► │  Google Gemini│
-
-│   Vercel        │         │   Render         │         │  (LLM + Embed)│
-
-└─────────────────┘         └────────┬─────────┘         └───────────────┘
-
-│
-
-▼
-
-┌──────────────────┐
-
-│   ChromaDB       │
-
-│   (Vector Store) │
-
-└──────────────────┘
-
-**Flow:**
-1. User uploads PDF → text extracted via `pypdf`
-2. Text chunked using LangChain's `RecursiveCharacterTextSplitter`
-3. Chunks embedded using Gemini embeddings → stored in ChromaDB
-4. On question: semantic search retrieves top-3 chunks
-5. LLM generates answer grounded in retrieved context with source attribution
-
----
-
-##  Tech Stack
-
-### Backend
-- **FastAPI** — Async Python web framework
-- **LangChain** — Document loaders, text splitters
-- **ChromaDB** — Persistent vector database
-- **Google Gemini API** — Embeddings + LLM (Flash / Flash-Lite)
-- **pypdf** — PDF text extraction
-
-### Frontend
-- **React 19** — UI framework
-- **Tailwind CSS** — Styling
-- **Framer Motion** — Animations
-- **Axios** — HTTP client
-- **Web Speech API** — Voice input
-
-### DevOps
-- **Vercel** — Frontend hosting (auto-deploy on push)
-- **Render** — Backend hosting
-- **GitHub Actions** — CI/CD
-
----
-
-##  Local Setup
-
-### Prerequisites
-- Python 3.10+
-- Node.js 18+
-- Google Gemini API key ([get one here](https://aistudio.google.com/apikey))
-
-### Backend
-```bash
+## Local setup (Python 3.12, Node 22)
+Backend:
+```sh
 cd backend
-python -m venv venv
-venv\Scripts\activate     # Windows
+python -m venv .venv
+source .venv/bin/activate
 pip install -r requirements.txt
-
-# Create .env file
-echo GEMINI_API_KEY=your_key_here > .env
-
+cp .env.example .env
+# Fill GEMINI_API_KEY; generate SESSION_SECRET with:
+python -c 'import secrets; print(secrets.token_urlsafe(48))'
 uvicorn main:app --reload
 ```
+On Windows activate `.venv\Scripts\activate` and copy `.env.example` to `.env` using your file manager. Backend: http://localhost:8000, docs: http://localhost:8000/docs.
 
-Backend runs on '(https://docmind-12ms.onrender.com/)'.
-
-### Frontend
-```bash
+In another terminal:
+```sh
 cd frontend
-npm install
+npm ci
 npm start
 ```
+Frontend: http://localhost:3000. Set REACT_APP_API_URL to the backend base URL for deployments; otherwise it uses http://localhost:8000. Backend CORS_ORIGINS must list the frontend origins. Configure a persistent random SESSION_SECRET before using document endpoints, and keep it identical across workers.
 
-Frontend runs on `(https://docmind-mocha.vercel.app/)`.
+## Privacy and behavior
+- POST `/sessions` issues an unguessable signed bearer token valid for 24 hours. The frontend stores it locally. Each upload/query is scoped to that session. This is anonymous browser-session isolation, not account authentication; anyone holding the token can access that session. Chats in the same browser session share uploaded documents.
+- Old unscoped document collections are never queried. Remove old `documents` data administratively after checking retention needs; this change does not delete existing stored user data automatically.
+- PDFs are read in memory, never written using a supplied filename. Limits: five files/request, 10 MiB/file, 100 pages/file, 1,000 chunks/file and 5,000 chunks/session. No OCR or encrypted PDFs.
+- Expired document chunks are removed lazily when indexing/querying resumes. An idle server may retain expired data on disk until the next operation. Restart/secret rotation invalidates tokens if the secret changes; upload again after expiry.
+- Replies are instructed to use document excerpts and abstain when evidence is missing. This reduces unsupported answers, but does not guarantee an LLM can never hallucinate. Empty sessions do not invoke the LLM; retrieval errors return an explicit error.
+- Chat titles are derived locally by the backend from the question, not claimed to be AI-generated. No paid title-generation call.
+- API/provider error details are logged server-side rather than returned to users.
 
----
+## API
+| Method | Endpoint | Authorization |
+|---|---|---|
+| GET | `/` | None |
+| POST | `/sessions` | None |
+| POST | `/upload-pdf` | Bearer session token; multipart `files` |
+| POST | `/ask` | Bearer token; question/model/history JSON |
+| POST | `/ask-stream` | Same; SSE sources/delta/done/error |
+| POST | `/generate-title` | Bearer token; question JSON |
 
-## API Endpoints
+## Validation
+Backend: `pip install pytest httpx` then `python -m pytest -q` from backend/. Tests fake provider/vector storage and cover session isolation, invalid/expired tokens, unsafe filenames, bad/oversized uploads and retrieval failures. Frontend: `CI=true npm test -- --watchAll=false` and `npm run build`. GitHub Actions runs these checks.
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET`  | `/` | Health check |
-| `POST` | `/upload-pdf` | Upload PDF(s), extract + embed + store |
-| `POST` | `/ask` | Query the document store with a question (supports `history` for multi-turn) |
-| `POST` | `/ask-stream` | Same as `/ask` but streams the answer in real time (SSE) |
-| `POST` | `/generate-title` | Generate a short AI title for a chat |
+## Deployment limits
+This remains a portfolio demo. Place provider quotas, request/body limits and rate limiting at the hosting gateway before exposing paid API operations broadly. Session issuance is public, so per-session upload caps alone do not prevent abusive new sessions. The quota read/add is not a distributed transaction; concurrent uploads can overshoot a session cap. Single-host Chroma persistence needs durable storage and backups. No account recovery, OCR, automated model evaluation or guaranteed answer accuracy is claimed. Test the deployed upload/query flow with a non-sensitive sample PDF after configuring Gemini; unit tests do not call paid services.
 
-**Example request:**
-```bash
-curl -X POST https://docmind-12ms.onrender.com/ask \
-  -H "Content-Type: application/json" \
-  -d '{"question": "Summarize the document", "model": "gemini-2.5-flash-lite"}'
-```
-
----
-
-## Roadmap
-
-- [ ] JWT authentication + per-user data isolation
-- [x] Streaming responses (Server-Sent Events)
-- [x] Conversation memory (multi-turn context)
-- [ ] Page-level citations with PDF highlighting
-- [ ] Background async indexing for large PDFs (Celery + Redis)
-- [ ] Migrate to Pinecone for production-grade vector search
-- [ ] Mobile-responsive UI
-- [ ] OCR support for scanned PDFs
-- [ ] Document comparison across PDFs
-
----
-
-## 📂 Project Structure
-
-docmind/
-
-├── backend/
-
-│   ├── main.py              # FastAPI app + RAG pipeline
-
-│   ├── requirements.txt
-
-│   ├── chroma_db/           # ChromaDB persistence
-
-│   └── uploads/             # Uploaded PDFs
-
-├── frontend/
-
-│   ├── src/
-
-│   │   ├── App.js           # Main React component
-
-│   │   ├── components/
-
-│   │   │   └── MouseOrb.jsx # Iridescent cursor
-
-│   │   └── index.css        # Tailwind + custom CSS
-
-│   ├── tailwind.config.js
-
-│   └── package.json
-
-└── README.md
-
----
-
-##  Author
-
-**Sai Teja Golla**
--  LinkedIn: [@golla-saiteja](https://www.linkedin.com/in/golla-saiteja)
--  GitHub: [@iamsaiteja](https://github.com/iamsaiteja)
--  tejayadav872@gmail.com
-
----
-
-##  License
-
-MIT License — feel free to learn from this and build your own version.
-
----
-
- If you found this useful, give it a star!
-
+Author: Sai Teja Golla · [GitHub](https://github.com/iamsaiteja) · [LinkedIn](https://www.linkedin.com/in/golla-saiteja)
