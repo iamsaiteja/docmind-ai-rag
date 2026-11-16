@@ -1,4 +1,4 @@
-# DocMind 
+# DocMind by Saiteja
 
 ##  Screenshots
 
@@ -8,12 +8,7 @@
 
 > An AI-powered document assistant built with RAG (Retrieval-Augmented Generation). Upload PDFs, ask questions, get answers grounded in your documents with source citations.
 
-** Live Demo:** [![Live Demo](https://img.shields.io/badge/Live-Demo-brightgreen)](https://docmind-mocha.vercel.app)
-#  DocMind
-
-AI-powered document assistant built with RAG.
-
-[![Live Demo](https://img.shields.io/badge/Live-Demo-brightgreen)](https://docmind-mocha.vercel.app)
+[Open DocMind by Saiteja](https://docmind-mocha.vercel.app/)
 [![GitHub Repo](https://img.shields.io/badge/GitHub-Repository-black)](https://github.com/iamsaiteja/docmind)
 [![Python](https://img.shields.io/badge/Python-3.10+-blue)]()
 [![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688)]()
