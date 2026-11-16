@@ -2,229 +2,68 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ══════════════════════════════════════
-   Keyframes
-══════════════════════════════════════ */
-
-
-@keyframes blob-move {
-  0%,  100% { transform: translate(0,     0)     scale(1);    }
-  25%        { transform: translate(45px, -65px)  scale(1.08); }
-  50%        { transform: translate(-30px, 40px)  scale(0.93); }
-  75%        { transform: translate(55px,  25px)  scale(1.04); }
+:root {
+  --brand: 190 18 60;
+  --paper: 255 255 255;
+  --page: 255 241 243;
+  --ink: 45 23 33;
+  color-scheme: light;
 }
 
-@keyframes shimmer {
-  0%   { background-position: -300% center; }
-  100% { background-position:  300% center; }
+.glass { background: rgb(var(--paper)); }
+.glass-light { background: rgb(var(--paper)); }
+
+.glossy-icon,
+.glossy-btn,
+.user-bubble {
+  background: rgb(var(--brand));
+  color: rgb(var(--paper));
 }
 
-@keyframes glow-pulse {
-  0%, 100% {
-    box-shadow: 0 0 16px rgba(120,160,210,.35),
-                0 0 32px rgba(120,160,210,.12),
-                inset 0 1px 0 rgba(120,160,210,.18);
-  }
-  50% {
-    box-shadow: 0 0 30px rgba(120,160,210,.60),
-                0 0 60px rgba(120,160,210,.20),
-                inset 0 1px 0 rgba(120,160,210,.26);
-  }
+.glossy-btn { transition: box-shadow 150ms ease, transform 150ms ease; }
+.glossy-btn:hover:not(:disabled) { box-shadow: 0 3px 12px rgb(var(--brand) / .24); }
+.glossy-btn:disabled { opacity: .48; }
+
+.shimmer-text { color: rgb(var(--ink)); }
+.water-input { border: 1px solid rgb(var(--ink) / .22); }
+.water-input:focus-within {
+  border-color: rgb(var(--brand));
+  box-shadow: 0 0 0 3px rgb(var(--brand) / .12);
 }
 
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50%       { transform: translateY(-9px); }
+.chat-active {
+  background: rgb(var(--page));
+  box-shadow: inset 3px 0 0 rgb(var(--brand));
+}
+
+.bg-accent { background: rgb(var(--brand)); }
+.bg-accent-15 { background: rgb(var(--brand) / .15); }
+.text-accent-strong, .text-accent-soft { color: rgb(var(--brand)); }
+.border-accent-20 { border-color: rgb(var(--brand) / .20); }
+.border-accent-40,
+.hover\:border-accent-40:hover,
+.focus\:border-accent-40:focus { border-color: rgb(var(--brand) / .40); }
+.decoration-accent-40 { text-decoration-color: rgb(var(--brand) / .40); }
+.hover\:decoration-accent-strong:hover { text-decoration-color: rgb(var(--brand)); }
+
+button:focus-visible,
+select:focus-visible,
+a:focus-visible {
+  outline: 2px solid rgb(var(--brand));
+  outline-offset: 2px;
 }
 
 @keyframes water-wave {
-  0%, 60%, 100% { transform: translateY(0);    opacity: .45; }
-  30%            { transform: translateY(-7px); opacity: 1;   }
+  0%, 60%, 100% { opacity: .4; }
+  30% { opacity: 1; }
 }
-
-@keyframes border-flow {
-  0%   { background-position: 0%   50%; }
-  50%  { background-position: 100% 50%; }
-  100% { background-position: 0%   50%; }
-}
-
-/* ══════════════════════════════════════
-   Animated water-light background blobs
-══════════════════════════════════════ */
-
-.bg-blob {
-  position: fixed;
-  border-radius: 50%;
-  filter: blur(72px);
-  pointer-events: none;
-  z-index: 0;
-  will-change: transform;
-}
-.bg-blob-1 {
-  width: 720px; height: 720px;
-  left: -220px; top: -150px;
-  background: radial-gradient(circle, rgba(120,160,210,.14) 0%, rgba(120,160,210,.06) 55%, transparent 75%);
-  animation: blob-move 14s ease-in-out infinite;
-}
-.bg-blob-2 {
-  width: 600px; height: 600px;
-  right: -140px; top: 18%;
-  background: radial-gradient(circle, rgba(120,160,210,.11) 0%, rgba(120,160,210,.05) 55%, transparent 75%);
-  animation: blob-move 18s ease-in-out infinite reverse;
-}
-.bg-blob-3 {
-  width: 500px; height: 500px;
-  left: 28%; bottom: 4%;
-  background: radial-gradient(circle, rgba(120,160,210,.09) 0%, rgba(120,160,210,.04) 55%, transparent 75%);
-  animation: blob-move 22s ease-in-out infinite 4s;
-}
-.bg-blob-4 {
-  width: 360px; height: 360px;
-  right: 22%; top: 6%;
-  background: radial-gradient(circle, rgba(120,160,210,.07) 0%, transparent 75%);
-  animation: blob-move 16s ease-in-out infinite 7s;
-}
-
-/* ══════════════════════════════════════
-   Glassmorphism surfaces
-══════════════════════════════════════ */
-
-.glass {
-  background: rgba(9, 9, 13, 0.74);
-  backdrop-filter: blur(26px) saturate(160%);
-  -webkit-backdrop-filter: blur(26px) saturate(160%);
-}
-
-.glass-light {
-  background: rgba(255, 255, 255, 0.04);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-}
-
-/* ══════════════════════════════════════
-   Glossy icon (D logo / avatar)
-══════════════════════════════════════ */
-
-.glossy-icon {
-  background: linear-gradient(145deg, #a8b5d1 0%, #6b7a99 45%, #3d4763 100%);
-  box-shadow: 0 4px 18px rgba(120,160,210,.50),
-              inset 0 1px 0 rgba(120,160,210,.24),
-              inset 0 -1px 0 rgba(0,0,0,.20);
-  position: relative;
-  overflow: hidden;
-}
-.glossy-icon::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 52%;
-  background: linear-gradient(to bottom, rgba(120,160,210,.26), transparent);
-  pointer-events: none;
-}
-
-/* ══════════════════════════════════════
-   Glossy send / active button
-══════════════════════════════════════ */
-
-.glossy-btn {
-  position: relative;
-  overflow: hidden;
-  background: linear-gradient(150deg, #a8b5d1 0%, #6b7a99 45%, #3d4763 100%);
-  box-shadow: 0 4px 20px rgba(120,160,210,.45),
-              inset 0 1px 0 rgba(120,160,210,.22),
-              inset 0 -1px 0 rgba(0,0,0,.22);
-  transition: all .25s ease;
-}
-.glossy-btn::before {
-  content: '';
-  position: absolute;
-  top: 0; left: 0; right: 0;
-  height: 52%;
-  background: linear-gradient(to bottom, rgba(120,160,210,.22), transparent);
-  pointer-events: none;
-  border-radius: inherit;
-}
-.glossy-btn:hover:not(:disabled) {
-  box-shadow: 0 6px 32px rgba(120,160,210,.65),
-              inset 0 1px 0 rgba(120,160,210,.28);
-  transform: translateY(-1px);
-  filter: brightness(1.08);
-}
-.glossy-btn:disabled { opacity: .30; }
-
-/* ══════════════════════════════════════
-   Animations on elements
-══════════════════════════════════════ */
-
-.logo-glow  { animation: glow-pulse 3.2s ease-in-out infinite; }
-.logo-float { animation: float 4s ease-in-out infinite; }
-
-/* ══════════════════════════════════════
-   Shimmer text (water light refraction)
-══════════════════════════════════════ */
-
-.shimmer-text {
-  background: linear-gradient(90deg, #d4d4ff 15%, #a5b4fc 42%, #c4b5fd 54%, #d4d4ff 82%);
-  background-size: 300% auto;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-  animation: shimmer 5s linear infinite;
-}
-
-/* ══════════════════════════════════════
-   Water-glow input/border
-══════════════════════════════════════ */
-
-.water-input {
-  border: 1px solid rgba(120,160,210,.20);
-  transition: border-color .3s ease, box-shadow .3s ease;
-}
-.water-input:focus-within {
-  border-color: rgba(120,160,210,.50);
-  box-shadow: 0 0 0 3px rgba(120,160,210,.09),
-              0 0 26px rgba(120,160,210,.16);
-}
-
-/* ══════════════════════════════════════
-   Chat sidebar item active indicator
-══════════════════════════════════════ */
-
-.chat-active {
-  background: rgba(120,160,210,.11) !important;
-  box-shadow: inset 3px 0 0 rgba(120,160,210,.65);
-}
-
-/* ══════════════════════════════════════
-   User message bubble (glossy)
-══════════════════════════════════════ */
-
-.user-bubble {
-  background: linear-gradient(145deg, rgba(120,160,210,.95), rgba(120,160,210,.95));
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  box-shadow: 0 4px 22px rgba(0,0,0,.32),
-              inset 0 1px 0 rgba(120,160,210,.09),
-              inset 0 -1px 0 rgba(0,0,0,.16);
-}
-
-/* ══════════════════════════════════════
-   Loading dots — water wave
-══════════════════════════════════════ */
 
 .water-dot { animation: water-wave 1.4s ease-in-out infinite; }
 
-/* ══════════════════════════════════════
-   Scrollbar
-══════════════════════════════════════ */
+@media (prefers-reduced-motion: reduce) {
+  .water-dot { animation: none; }
+}
 
-::-webkit-scrollbar         { width: 4px; }
-::-webkit-scrollbar-track   { background: transparent; }
-::-webkit-scrollbar-thumb   { background: rgba(120,160,210,.28); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(120,160,210,.50); }
-
-
-@keyframes ripple-spread {
-  0%   { transform: scale(0.3); opacity: 0.9; }
-  100% { transform: scale(3.5);  opacity: 0; }
+@supports not (height: 100dvh) {
+  .h-\[100dvh\] { height: 100vh; }
 }

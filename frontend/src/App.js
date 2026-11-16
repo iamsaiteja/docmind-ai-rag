@@ -1,26 +1,33 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import axios from "axios";
-import MouseOrb from "./components/MouseOrb";
+import { AssistantText, MessageActions, Sources } from "./ChatMessages";
 
-const API = "https://docmind-12ms.onrender.com";
+const API = process.env.REACT_APP_API_URL || "https://docmind-12ms.onrender.com";
+const FIRST_REPLY_TIMEOUT = 75_000;
+const STREAM_IDLE_TIMEOUT = 35_000;
+const SLOW_REPLY_NOTICE = 5_000;
 
 /* ════════════════════════════════════════════════════════
    i18n — English / Telugu / Hindi
 ════════════════════════════════════════════════════════ */
 const STRINGS = {
   en: {
-    newChat: "New chat", searchChats: "Search chats", recent: "Recent",
+    send: "Send message", newChat: "New chat", searchChats: "Search chats", recent: "Recent",
     pinned: "Pinned", noConvos: "No conversations yet", noMatches: "No matches",
     howCanIHelp: "How can I help?", askAnything: "Ask anything — with or without a PDF.",
     messageDocMind: "Message DocMind…",
     docMindMistakes: "DocMind can make mistakes. Verify important info.",
     settings: "Settings", defaultModel: "Default model",
-    accentColor: "Accent color", language: "Language", yourName: "Your name",
+    language: "Language", yourName: "Your name",
     clearConvos: "Clear all conversations", clear: "Clear",
     pin: "Pin", unpin: "Unpin", copy: "Copy", copied: "Copied!",
     regenerate: "Regenerate", edit: "Edit", save: "Save", cancel: "Cancel",
     stop: "Stop", exportChat: "Export chat", deleteChat: "Delete",
     rename: "Rename", thinking: "Thinking…",
+    slowReply: "Waiting for the server…",
+    replyTimeout: "The reply timed out. Try again.",
+    replyFailed: "The reply was interrupted. Try again.",
+    greeting: "Hi! Upload a PDF or ask me a question.",
     summarize: "Summarize this document", explainEli5: "Explain like I'm 5",
     listKeyPoints: "List the key points",
     sourcesLabel: "source", indexing: "Indexing…",
@@ -32,18 +39,22 @@ const STRINGS = {
     typeMore: "Tip: Shift+Enter for newline · Ctrl+K new chat · Ctrl+B toggle sidebar",
   },
   te: {
-    newChat: "Kotha chat", searchChats: "Chats vethukko", recent: "Recent",
+    send: "Message pampu", newChat: "Kotha chat", searchChats: "Chats vethukko", recent: "Recent",
     pinned: "Pinned", noConvos: "Inka conversations ledhu", noMatches: "Em dorakaledhu",
     howCanIHelp: "Em help kavali bhayya?", askAnything: "Em adugu — PDF tho ledha PDF lekunda.",
     messageDocMind: "DocMind ki message rayi…",
     docMindMistakes: "DocMind tappu cheyochu. Muddatha info verify cheyyi.",
     settings: "Settings", defaultModel: "Default model",
-    accentColor: "Rangu", language: "Bhasha", yourName: "Nee peru",
+    language: "Bhasha", yourName: "Nee peru",
     clearConvos: "Anni conversations clear cheyyi", clear: "Clear",
     pin: "Pin", unpin: "Unpin teesey", copy: "Copy", copied: "Copy ayyindi!",
     regenerate: "Marala generate", edit: "Edit", save: "Save", cancel: "Cancel",
     stop: "Aapu", exportChat: "Chat export", deleteChat: "Delete",
     rename: "Peru maarchu", thinking: "Aalochistunna…",
+    slowReply: "Server reply kosam wait chesthunna…",
+    replyTimeout: "Reply ki time aipoyindi. Malli try cheyyi.",
+    replyFailed: "Reply madhyalo aagipoyindi. Malli try cheyyi.",
+    greeting: "Hi! PDF upload cheyyi leda oka question adugu.",
     summarize: "Ee document summarize chey", explainEli5: "5 years pillodiki cheppinattu cheppu",
     listKeyPoints: "Mukhya points list chey",
     sourcesLabel: "source", indexing: "Indexing avtundi…",
@@ -55,18 +66,22 @@ const STRINGS = {
     typeMore: "Tip: Shift+Enter new line · Ctrl+K kotha chat · Ctrl+B sidebar",
   },
   hi: {
-    newChat: "Nayi chat", searchChats: "Chats khojo", recent: "Recent",
+    send: "Message bhejein", newChat: "Nayi chat", searchChats: "Chats khojo", recent: "Recent",
     pinned: "Pinned", noConvos: "Abhi koi conversations nahi", noMatches: "Kuch nahi mila",
     howCanIHelp: "Kaise madad karu?", askAnything: "Kuch bhi pucho — PDF ke saath ya bina.",
     messageDocMind: "DocMind ko message bhejo…",
     docMindMistakes: "DocMind galti kar sakta hai. Important info verify karo.",
     settings: "Settings", defaultModel: "Default model",
-    accentColor: "Rang", language: "Bhasha", yourName: "Aapka naam",
+    language: "Bhasha", yourName: "Aapka naam",
     clearConvos: "Saare conversations clear karo", clear: "Clear",
     pin: "Pin", unpin: "Unpin", copy: "Copy", copied: "Copy ho gaya!",
     regenerate: "Phir se", edit: "Edit", save: "Save", cancel: "Cancel",
     stop: "Rok do", exportChat: "Chat export", deleteChat: "Delete",
     rename: "Naam badlo", thinking: "Soch raha hoon…",
+    slowReply: "Server ke jawab ka intezar hai…",
+    replyTimeout: "Jawab ka samay khatam ho gaya. Phir try karein.",
+    replyFailed: "Jawab beech mein ruk gaya. Phir try karein.",
+    greeting: "Hi! PDF upload karein ya koi sawal poochhein.",
     summarize: "Is document ko summarize karo", explainEli5: "5 saal ke bachche ko samjhao",
     listKeyPoints: "Mukhya points list karo",
     sourcesLabel: "source", indexing: "Indexing ho rahi hai…",
@@ -79,15 +94,6 @@ const STRINGS = {
   },
 };
 
-const ACCENT_COLORS = [
-  { value: "steel",   label: "Steel",   rgb: "120, 160, 210" },
-  { value: "indigo",  label: "Indigo",  rgb: "129, 140, 248" },
-  { value: "emerald", label: "Emerald", rgb: "52, 211, 153" },
-  { value: "rose",    label: "Rose",    rgb: "244, 114, 182" },
-  { value: "amber",   label: "Amber",   rgb: "251, 191, 36" },
-  { value: "cyan",    label: "Cyan",    rgb: "34, 211, 238" },
-];
-
 const LANGS = [
   { value: "en", label: "English" },
   { value: "te", label: "తెలుగు" },
@@ -96,344 +102,21 @@ const LANGS = [
 
 const LS = {
   chats: "rag_chats",
-  accent: "dm_accent",
   lang: "dm_lang",
   name: "dm_user_name",
   model: "dm_model",
 };
 
 /* ════════════════════════════════════════════════════════
-   Inline-markdown (bold, code) helper
-════════════════════════════════════════════════════════ */
-function inline(text, k0 = 0) {
-  const parts = [];
-  const regex = /(`[^`]+`|\[[^\]]+\]\((?:https?:\/\/|mailto:)[^)\s]+\)|\*\*\*[^*]+\*\*\*|\*\*[^*]+\*\*|\*[^*\n]+\*|~~[^~]+~~)/g;
-  let last = 0, m, key = k0;
-  while ((m = regex.exec(text)) !== null) {
-    if (m.index > last) parts.push(text.slice(last, m.index));
-    const tok = m[0];
-    if (tok.startsWith("`"))
-      parts.push(<code key={key++} className="px-1.5 py-0.5 rounded bg-white/10 text-accent-soft text-[13px]">{tok.slice(1, -1)}</code>);
-    else if (tok.startsWith("[")) {
-      const mid = tok.indexOf("](");
-      const label = tok.slice(1, mid), href = tok.slice(mid + 2, -1);
-      parts.push(
-        <a key={key++} href={href} target="_blank" rel="noopener noreferrer"
-          className="text-accent-strong underline underline-offset-2 decoration-accent-40 hover:decoration-accent-strong transition">
-          {label}
-        </a>
-      );
-    }
-    else if (tok.startsWith("***"))
-      parts.push(<strong key={key++} className="font-semibold italic text-white">{tok.slice(3, -3)}</strong>);
-    else if (tok.startsWith("**"))
-      parts.push(<strong key={key++} className="font-semibold text-white">{tok.slice(2, -2)}</strong>);
-    else if (tok.startsWith("~~"))
-      parts.push(<del key={key++} className="text-white/50">{tok.slice(2, -2)}</del>);
-    else
-      parts.push(<em key={key++} className="italic text-white/90">{tok.slice(1, -1)}</em>);
-    last = m.index + tok.length;
-  }
-  if (last < text.length) parts.push(text.slice(last));
-  return parts;
-}
-
-/* ════════════════════════════════════════════════════════
-   Code block (fenced ``` blocks) with copy
-════════════════════════════════════════════════════════ */
-function CodeBlock({ lang, code, t }) {
-  const [copied, setCopied] = useState(false);
-  const copy = () => {
-    navigator.clipboard.writeText(code).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-  };
-  return (
-    <div className="my-3 rounded-xl border border-white/[0.08] overflow-hidden bg-black/40 backdrop-blur-sm">
-      <div className="flex items-center justify-between px-3 py-1.5 border-b border-white/[0.06] bg-white/[0.02]">
-        <span className="text-[11px] uppercase tracking-wider text-white/40">{lang || "code"}</span>
-        <button onClick={copy} className="text-[11px] text-white/50 hover:text-white transition flex items-center gap-1.5">
-          {copied ? (
-            <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>{t.copied}</>
-          ) : (
-            <><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>{t.copy}</>
-          )}
-        </button>
-      </div>
-      <pre className="px-3.5 py-2.5 text-[12.5px] sm:text-[13px] leading-6 overflow-x-auto text-white/85"><code>{code}</code></pre>
-    </div>
-  );
-}
-
-/* ════════════════════════════════════════════════════════
-   Text block (paragraphs, lists, headings)
-════════════════════════════════════════════════════════ */
-function TableBlock({ rows, k }) {
-  const parseRow = (line) =>
-    line.trim().replace(/^\|/, "").replace(/\|$/, "").split("|").map((c) => c.trim());
-  const header = parseRow(rows[0]);
-  const body = rows.slice(2).map(parseRow);
-  return (
-    <div key={k} className="my-3 overflow-x-auto rounded-xl border border-white/[0.08]">
-      <table className="w-full text-[13.5px] border-collapse">
-        <thead>
-          <tr className="bg-white/[0.05]">
-            {header.map((h, i) => (
-              <th key={i} className="text-left font-semibold text-white px-3.5 py-2 border-b border-white/[0.08] whitespace-nowrap">
-                {inline(h, i * 50)}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {body.map((r, ri) => (
-            <tr key={ri} className="odd:bg-transparent even:bg-white/[0.02] hover:bg-white/[0.04] transition">
-              {header.map((_, ci) => (
-                <td key={ci} className="px-3.5 py-2 border-b border-white/[0.05] text-white/75 align-top">
-                  {inline(r[ci] ?? "", ri * 100 + ci)}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function TextBlock({ text }) {
-  const lines = text.split("\n");
-  const blocks = [];
-  let ul = [], ol = [], quote = [], table = [];
-
-  const flushUl = () => {
-    if (ul.length) {
-      blocks.push(<ul key={"u" + blocks.length} className="list-disc pl-5 space-y-1.5 my-2.5 marker:text-white/30">{ul}</ul>);
-      ul = [];
-    }
-  };
-  const flushOl = () => {
-    if (ol.length) {
-      blocks.push(<ol key={"o" + blocks.length} className="list-decimal pl-5 space-y-1.5 my-2.5 marker:text-white/40">{ol}</ol>);
-      ol = [];
-    }
-  };
-  const flushQuote = () => {
-    if (quote.length) {
-      blocks.push(
-        <blockquote key={"q" + blocks.length}
-          className="my-2.5 pl-3.5 border-l-2 border-accent-40 text-white/60 italic space-y-1">
-          {quote}
-        </blockquote>
-      );
-      quote = [];
-    }
-  };
-  const flushTable = () => {
-    if (table.length >= 2 && /^\s*\|?[\s:|-]+\|?\s*$/.test(table[1])) {
-      blocks.push(<TableBlock key={"t" + blocks.length} k={"t" + blocks.length} rows={table} />);
-    } else {
-      table.forEach((line, i) =>
-        blocks.push(<p key={"tp" + blocks.length + "_" + i} className="mb-2.5">{inline(line, i * 100)}</p>)
-      );
-    }
-    table = [];
-  };
-  const flushAll = () => { flushUl(); flushOl(); flushQuote(); flushTable(); };
-
-  lines.forEach((line, i) => {
-    const tx = line.trim();
-    const isTableLine = /^\|.*\|/.test(tx);
-
-    if (table.length && !isTableLine) flushTable();
-
-    if (isTableLine) {
-      flushUl(); flushOl(); flushQuote();
-      table.push(tx);
-    } else if (/^[*-]\s+/.test(tx)) {
-      flushOl(); flushQuote();
-      ul.push(<li key={i} className="pl-1">{inline(tx.replace(/^[*-]\s+/, ""), i * 100)}</li>);
-    } else if (/^\d+[.)]\s+/.test(tx)) {
-      flushUl(); flushQuote();
-      ol.push(<li key={i} className="pl-1">{inline(tx.replace(/^\d+[.)]\s+/, ""), i * 100)}</li>);
-    } else if (/^>\s?/.test(tx)) {
-      flushUl(); flushOl();
-      quote.push(<p key={i}>{inline(tx.replace(/^>\s?/, ""), i * 100)}</p>);
-    } else if (/^(-{3,}|\*{3,}|_{3,})$/.test(tx)) {
-      flushAll();
-      blocks.push(<hr key={i} className="my-4 border-white/[0.08]" />);
-    } else if (tx === "") {
-      flushAll();
-    } else if (/^#{1,4}\s/.test(tx)) {
-      flushAll();
-      const level = tx.match(/^#+/)[0].length;
-      const size = level === 1 ? "text-[17px]" : level === 2 ? "text-[16px]" : "text-[15px]";
-      blocks.push(<p key={i} className={`font-semibold ${size} mt-3 mb-1.5 text-white`}>{inline(tx.replace(/^#{1,4}\s/, ""), i * 100)}</p>);
-    } else {
-      flushUl(); flushOl(); flushQuote();
-      blocks.push(<p key={i} className="mb-2.5">{inline(tx, i * 100)}</p>);
-    }
-  });
-  flushAll();
-  return <>{blocks}</>;
-}
-
-function Markdown({ text, t }) {
-  // Parse fenced code blocks first; render text blocks in between
-  const parts = [];
-  const codeRegex = /```(\w*)\n?([\s\S]*?)```/g;
-  let lastIndex = 0, match, key = 0;
-  while ((match = codeRegex.exec(text)) !== null) {
-    if (match.index > lastIndex)
-      parts.push({ type: "text", content: text.slice(lastIndex, match.index), key: key++ });
-    parts.push({ type: "code", lang: match[1], content: match[2].trim(), key: key++ });
-    lastIndex = match.index + match[0].length;
-  }
-  if (lastIndex < text.length)
-    parts.push({ type: "text", content: text.slice(lastIndex), key: key++ });
-  if (parts.length === 0)
-    parts.push({ type: "text", content: text, key: 0 });
-
-  return (
-    <div className="text-[15px] leading-7">
-      {parts.map((p) =>
-        p.type === "code"
-          ? <CodeBlock key={p.key} lang={p.lang} code={p.content} t={t} />
-          : <TextBlock key={p.key} text={p.content} />
-      )}
-    </div>
-  );
-}
-
-/* ════════════════════════════════════════════════════════
-   Assistant typing animation
-════════════════════════════════════════════════════════ */
-function AssistantText({ text, animate, streaming, onTick, t }) {
-  const [shown, setShown] = useState(animate ? "" : text);
-  useEffect(() => {
-    if (streaming) { onTick && onTick(); return; }
-    if (!animate) { setShown(text); return; }
-    let i = 0;
-    const id = setInterval(() => {
-      i += 4;
-      setShown(text.slice(0, i));
-      onTick && onTick();
-      if (i >= text.length) { setShown(text); clearInterval(id); }
-    }, 12);
-    return () => clearInterval(id);
-  }, [text, animate, streaming]); // eslint-disable-line
-
-  // Real streaming: render live markdown + blinking cursor (like ChatGPT)
-  if (streaming) {
-    return (
-      <div className="relative">
-        <Markdown text={text} t={t} />
-        <span className="inline-block w-[2px] h-[15px] align-middle bg-accent ml-0.5 animate-pulse" />
-      </div>
-    );
-  }
-
-  const done = shown.length >= text.length;
-  return done
-    ? <Markdown text={text} t={t} />
-    : <div className="whitespace-pre-wrap text-[15px] leading-7">
-        {shown}
-        <span className="inline-block w-[2px] h-[15px] align-middle bg-accent ml-0.5 animate-pulse" />
-      </div>;
-}
-
-/* ════════════════════════════════════════════════════════
-   Sources (collapsible)
-════════════════════════════════════════════════════════ */
-function Sources({ sources, t }) {
-  const [open, setOpen] = useState(false);
-  if (!sources || sources.length === 0) return null;
-  return (
-    <div className="mt-4">
-      <button
-        onClick={() => setOpen(!open)}
-        className="inline-flex items-center gap-2 text-[13px] text-white/50 hover:text-white/80 transition"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-          <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6" />
-        </svg>
-        <span className="font-medium">{sources.length} {t.sourcesLabel}{sources.length > 1 ? "s" : ""}</span>
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-          className={`transition-transform ${open ? "rotate-180" : ""}`}>
-          <path d="M6 9l6 6 6-6" />
-        </svg>
-      </button>
-      {open && (
-        <div className="mt-3 grid gap-2">
-          {sources.map((s, i) => (
-            <div key={i}
-              className="flex gap-3 rounded-xl glass-light border border-white/[0.08] px-3.5 py-3 hover:border-accent-40 hover:bg-white/[0.05] transition">
-              <div className="w-8 h-8 shrink-0 rounded-lg bg-accent-15 border border-accent-20 flex items-center justify-center text-accent-strong">
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" /><path d="M14 2v6h6" />
-                </svg>
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[13px] font-semibold text-accent-strong truncate">{s.source}</span>
-                  <span className="shrink-0 text-[10px] uppercase tracking-wider text-white/30 bg-white/[0.06] px-1.5 py-0.5 rounded">
-                    {i + 1}
-                  </span>
-                </div>
-                <p className="text-[12.5px] text-white/45 mt-1 leading-relaxed line-clamp-3">{s.snippet}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* ════════════════════════════════════════════════════════
-   Message actions (copy, regenerate)
-════════════════════════════════════════════════════════ */
-function MessageActions({ content, onRegenerate, t }) {
-  const [copied, setCopied] = useState(false);
-  const copy = () => {
-    navigator.clipboard.writeText(content).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1500);
-    });
-  };
-  return (
-    <div className="flex items-center gap-1 mt-2 -ml-1">
-      <button onClick={copy} title={t.copy}
-        className="px-2 py-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/[0.06] transition text-[12px] flex items-center gap-1.5">
-        {copied ? (
-          <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M20 6L9 17l-5-5"/></svg>{t.copied}</>
-        ) : (
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
-        )}
-      </button>
-      {onRegenerate && (
-        <button onClick={onRegenerate} title={t.regenerate}
-          className="px-2 py-1.5 rounded-lg text-white/40 hover:text-white hover:bg-white/[0.06] transition text-[12px] flex items-center gap-1.5">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12a9 9 0 0115-6.7L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 01-15 6.7L3 16"/><path d="M3 21v-5h5"/></svg>
-        </button>
-      )}
-    </div>
-  );
-}
-
-/* ════════════════════════════════════════════════════════
    MAIN APP
 ════════════════════════════════════════════════════════ */
 export default function App() {
   /* ── persistent prefs (localStorage) ─────────────────── */
-  const [accent, setAccent] = useState(() => localStorage.getItem(LS.accent) || "steel");
   const [lang, setLang] = useState(() => localStorage.getItem(LS.lang) || "en");
   const [userName, setUserName] = useState(() => localStorage.getItem(LS.name) || "Sai Teja");
   const [model, setModel] = useState(() => localStorage.getItem(LS.model) || "gemini-2.5-flash-lite");
   const t = STRINGS[lang] || STRINGS.en;
 
-  useEffect(() => { localStorage.setItem(LS.accent, accent); }, [accent]);
   useEffect(() => { localStorage.setItem(LS.lang, lang); }, [lang]);
   useEffect(() => { localStorage.setItem(LS.name, userName); }, [userName]);
   useEffect(() => { localStorage.setItem(LS.model, model); }, [model]);
@@ -442,6 +125,7 @@ export default function App() {
   const [question, setQuestion] = useState("");
   const [messages, setMessages] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [slowReply, setSlowReply] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [attached, setAttached] = useState([]);
   const [error, setError] = useState("");
@@ -495,10 +179,19 @@ export default function App() {
   }, [messages.length]);
 
   /* ── helpers ────────────────────────────────────────── */
+  const cancelActiveReply = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
+    streamRef.current = null;
+    setLoading(false);
+    setSlowReply(false);
+  }, []);
+
   const newChat = useCallback(() => {
+    cancelActiveReply();
     setMessages([]); setChatId(null); setError(""); setAttached([]);
     setEditingIdx(null); setSidebarOpen(false);
-  }, []);
+  }, [cancelActiveReply]);
 
   const saveChat = (msgs) => {
     let id = chatId;
@@ -518,16 +211,8 @@ export default function App() {
     setChats((p) => p.map((c) => (c.id === id ? { ...c, title: clean.slice(0, 60) } : c)));
   };
 
-  // First exchange tarvata AI short title (ChatGPT laga) — fail ayite silent
-  const autoTitle = async (id, q, answer) => {
-    try {
-      const res = await axios.post(`${API}/generate-title`, { question: q, answer: answer.slice(0, 600) });
-      const title = (res.data?.title || "").trim();
-      if (title) setChats((prev) => prev.map((c) => (c.id === id ? { ...c, title } : c)));
-    } catch { /* old backend / offline — heuristic title untundi */ }
-  };
-
   const loadChat = (c) => {
+    cancelActiveReply();
     setMessages(c.messages.map((m) => ({ ...m, animate: false, streaming: false })));
     setChatId(c.id); setError(""); setSidebarOpen(false); setEditingIdx(null);
   };
@@ -584,54 +269,64 @@ export default function App() {
 
   // Real-time streaming via SSE (like ChatGPT). Throws "no-stream" if the
   // backend doesn't support it yet, so the caller can fall back to /ask.
-  const askStream = async (q, history, base, controller) => {
+  const askStream = async (q, history, base, controller, onDelta) => {
     const res = await fetch(`${API}/ask-stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question: q, model, history }),
       signal: controller.signal,
     });
-    if (!res.ok || !res.body) throw new Error("no-stream");
+    if ([404, 405, 501].includes(res.status) || (res.ok && !res.body)) {
+      throw new Error("no-stream");
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buf = "", content = "", sources = [];
     streamRef.current = { content: "", sources: [] };
-    setMessages([...base, { role: "assistant", content: "", sources: [], streaming: true }]);
+    let complete = false;
 
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      const events = buf.split("\n\n");
-      buf = events.pop();
-      for (const ev of events) {
-        const line = ev.split("\n").find((l) => l.startsWith("data: "));
-        if (!line) continue;
-        let data;
-        try { data = JSON.parse(line.slice(6)); } catch { continue; }
-        if (data.type === "sources") {
-          sources = data.sources || [];
-        } else if (data.type === "delta") {
-          content += data.text;
-          streamRef.current = { content, sources };
-          setMessages([...base, { role: "assistant", content, sources, streaming: true }]);
-        } else if (data.type === "error") {
-          if (content) break;               // partial answer vachindi — keep it
-          throw new Error(data.message || "stream error");
+    try {
+      while (!complete) {
+        const { done, value } = await reader.read();
+        if (done || controller.signal.aborted) break;
+        buf += decoder.decode(value, { stream: true });
+        const events = buf.split("\n\n");
+        buf = events.pop();
+        for (const ev of events) {
+          const line = ev.split("\n").find((l) => l.startsWith("data: "));
+          if (!line) continue;
+          let data;
+          try { data = JSON.parse(line.slice(6)); } catch { continue; }
+          if (data.type === "sources") {
+            sources = data.sources || [];
+          } else if (data.type === "delta") {
+            onDelta();
+            content += data.text;
+            streamRef.current = { content, sources };
+            setMessages([...base, { role: "assistant", content, sources, streaming: true }]);
+          } else if (data.type === "done") {
+            complete = true;
+            break;
+          } else if (data.type === "error") {
+            throw new Error(data.message || "stream error");
+          }
         }
       }
+    } finally {
+      reader.cancel().catch(() => {});
     }
 
-    if (!content.trim()) throw new Error("no-stream");
+    if (!complete || !content.trim()) throw new Error("incomplete-stream");
     const final = [...base, { role: "assistant", content, sources, animate: false }];
-    setMessages(final);
-    return { content, final };
+    if (abortRef.current === controller) setMessages(final);
+    return final;
   };
 
   const ask = async (preset, startMessages) => {
     const q = (preset ?? question).trim();
-    if (!q || loading) return;
+    if (!q || loading || abortRef.current) return;
 
     // Light haptic on mobile
     if (navigator.vibrate) navigator.vibrate(8);
@@ -639,73 +334,81 @@ export default function App() {
     setError(""); setQuestion("");
     const start = startMessages ?? messages;
     const base = [...start, { role: "user", content: q, sources: [] }];
-    setMessages(base); setLoading(true);
+    if (/^(hi|hello|hey)[!.?]*$/i.test(q) && !attached.length) {
+      const final = [...base, { role: "assistant", content: t.greeting, sources: [] }];
+      setMessages(final);
+      saveChat(final);
+      return;
+    }
+
+    setMessages(base);
+    setLoading(true);
+    setSlowReply(false);
 
     const controller = new AbortController();
     abortRef.current = controller;
-    const isFirstExchange = !start.some((m) => m.role === "user");
+    streamRef.current = null;
+    const slowTimer = setTimeout(() => {
+      if (abortRef.current === controller) setSlowReply(true);
+    }, SLOW_REPLY_NOTICE);
+    let timedOut = false;
+    let timeout;
+    const setDeadline = (duration) => {
+      clearTimeout(timeout);
+      timeout = setTimeout(() => {
+        timedOut = true;
+        controller.abort();
+      }, duration);
+    };
+    setDeadline(FIRST_REPLY_TIMEOUT);
 
-    // Conversation memory — last 8 turns backend ki
     const history = start
       .filter((m) => !m.isError && m.content)
       .slice(-8)
       .map((m) => ({ role: m.role, content: m.content }));
 
-    const finish = (final, answer) => {
-      const id = saveChat(final);
-      if (isFirstExchange && answer) autoTitle(id, q, answer);
-    };
-
     try {
-      const { content, final } = await askStream(q, history, base, controller);
-      finish(final, content);
-    } catch (e) {
-      const aborted = e.name === "AbortError" || e.name === "CanceledError" || axios.isCancel?.(e);
-      if (aborted) {
-        // Stop pressed — partial streamed answer unte keep it
-        const partial = streamRef.current;
-        if (partial?.content) {
-          const final = [...base, { role: "assistant", content: partial.content, sources: partial.sources, animate: false }];
-          setMessages(final); finish(final, partial.content);
-        } else {
-          setMessages(base); saveChat(base);
-        }
-        streamRef.current = null;
-        setLoading(false);
-        abortRef.current = null;
-        return;
-      }
-
-      // Streaming fail — old /ask endpoint ki fallback (backward compatible)
+      let final;
       try {
-        const res = await axios.post(
+        final = await askStream(q, history, base, controller, () => {
+          clearTimeout(slowTimer);
+          setDeadline(STREAM_IDLE_TIMEOUT);
+        });
+      } catch (e) {
+        if (e.message !== "no-stream") throw e;
+        const { data } = await axios.post(
           `${API}/ask`,
           { question: q, model, history },
           { signal: controller.signal }
         );
-        if (res.data.error) throw new Error(res.data.error);
-        const final = [...base, {
-          role: "assistant",
-          content: res.data.answer,
-          sources: res.data.sources || [],
-          animate: true,
-        }];
-        setMessages(final); finish(final, res.data.answer);
-      } catch (e2) {
-        if (e2.name === "CanceledError" || axios.isCancel?.(e2)) {
-          setMessages(base); saveChat(base);
-          setLoading(false); abortRef.current = null;
-          return;
-        }
-        let msg = e2.response?.data?.detail || e2.message || "Backend not reachable";
-        if (msg.includes("429") || msg.toLowerCase().includes("quota")) msg = t.rateLimit;
-        const errMsgs = [...base, { role: "assistant", content: msg, sources: [], isError: true }];
-        setMessages(errMsgs); saveChat(errMsgs);
+        if (data.error || !data.answer?.trim()) throw new Error(data.error || "empty-reply");
+        final = [...base, { role: "assistant", content: data.answer, sources: data.sources || [] }];
+        if (abortRef.current === controller) setMessages(final);
       }
+      if (abortRef.current === controller) saveChat(final);
+    } catch (e) {
+      if (abortRef.current !== controller) return;
+      const partial = streamRef.current;
+      const final = partial?.content
+        ? [...base, { role: "assistant", ...partial }]
+        : [...base];
+      if (timedOut || !controller.signal.aborted) {
+        const detail = String(e.response?.status || e.message);
+        const content = timedOut ? t.replyTimeout
+          : /429|quota/i.test(detail) ? t.rateLimit : t.replyFailed;
+        final.push({ role: "assistant", content, sources: [], isError: true });
+      }
+      setMessages(final);
+      saveChat(final);
     } finally {
-      streamRef.current = null;
-      setLoading(false);
-      abortRef.current = null;
+      clearTimeout(timeout);
+      clearTimeout(slowTimer);
+      if (abortRef.current === controller) {
+        streamRef.current = null;
+        setSlowReply(false);
+        setLoading(false);
+        abortRef.current = null;
+      }
     }
   };
 
@@ -786,26 +489,15 @@ export default function App() {
      RENDER
   ════════════════════════════════════════════════════ */
   return (
-    <div data-accent={accent} className="flex h-[100dvh] bg-[#0b0a0d] text-[#ececee] font-sans antialiased relative overflow-hidden">
-
-      {/* Hide MouseOrb on touch devices — pure CSS, no JS cost */}
-      <div className="hidden md:block">
-        <MouseOrb />
-      </div>
+    <div className="flex h-[100dvh] bg-page text-ink font-sans antialiased relative overflow-hidden">
 
       <input type="file" accept=".pdf" multiple hidden ref={fileRef} onChange={onPickFiles} />
-
-      {/* Animated water-light background */}
-      <div className="bg-blob bg-blob-1" />
-      <div className="bg-blob bg-blob-2" />
-      <div className="bg-blob bg-blob-3" />
-      <div className="hidden md:block bg-blob bg-blob-4" />
 
       {/* Mobile backdrop overlay */}
       {sidebarOpen && (
         <div
           onClick={() => setSidebarOpen(false)}
-          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm md:hidden animate-fadeIn"
+          className="fixed inset-0 z-30 bg-black/60 backdrop-blur-sm md:hidden"
         />
       )}
 
@@ -813,7 +505,7 @@ export default function App() {
       <aside
         className={`
           fixed inset-y-0 left-0 z-40 w-[85vw] max-w-[300px]
-          glass border-r border-white/[0.07] flex flex-col p-3
+          glass border-r border-ink/[0.07] flex flex-col p-3
           transform transition-transform duration-300 ease-out
           ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
           md:static md:translate-x-0 md:w-72 md:shrink-0 md:z-10
@@ -821,12 +513,12 @@ export default function App() {
       >
         <div className="flex items-center justify-between gap-2 px-2 py-3">
           <div className="flex items-center gap-2">
-            <div className="w-7 h-7 rounded-lg glossy-icon logo-glow flex items-center justify-center text-white text-sm font-bold">D</div>
+            <div className="w-7 h-7 rounded-lg glossy-icon flex items-center justify-center text-ink text-sm font-bold">D</div>
             <span className="font-semibold tracking-tight shimmer-text">DocMind</span>
           </div>
           <button
             onClick={() => setSidebarOpen(false)}
-            className="md:hidden w-8 h-8 rounded-lg flex items-center justify-center text-white/50 hover:text-white hover:bg-white/[0.06]"
+            className="md:hidden w-8 h-8 rounded-lg flex items-center justify-center text-ink/75 hover:text-ink hover:bg-ink/[0.06]"
             aria-label="Close sidebar"
           >
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
@@ -834,32 +526,32 @@ export default function App() {
         </div>
 
         <button onClick={newChat}
-          className="mt-2 flex items-center gap-2 w-full px-3 py-2.5 rounded-xl glass-light water-input hover:bg-white/[0.06] transition text-sm">
+          className="mt-2 flex items-center gap-2 w-full px-3 py-2.5 rounded-xl glass-light water-input hover:bg-ink/[0.06] transition text-sm">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
           {t.newChat}
         </button>
 
         {/* Search */}
-        <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-xl glass-light border border-white/[0.06]">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/40 shrink-0"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
+        <div className="mt-2 flex items-center gap-2 px-3 py-2 rounded-xl glass-light border border-ink/[0.06]">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="text-ink/70 shrink-0"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.3-4.3"/></svg>
           <input value={search} onChange={(e) => setSearch(e.target.value)} placeholder={t.searchChats}
-            className="bg-transparent outline-none text-sm w-full placeholder:text-white/30" />
+            className="bg-transparent outline-none text-sm w-full placeholder:text-ink/70" />
         </div>
 
         {/* Chat list */}
         <div className="mt-3 flex-1 overflow-y-auto space-y-0.5">
           {pinnedChats.length > 0 && (
             <>
-              <p className="px-2 text-[11px] uppercase tracking-wider text-white/30 mb-1 mt-1">{t.pinned}</p>
+              <p className="px-2 text-[11px] uppercase tracking-wider text-ink/70 mb-1 mt-1">{t.pinned}</p>
               {pinnedChats.map((c) => (
                 <ChatItem key={c.id} c={c} active={c.id === chatId}
                   onClick={() => loadChat(c)} onPin={togglePin} onDel={deleteChat} onRename={renameChat} t={t} />
               ))}
             </>
           )}
-          <p className="px-2 text-[11px] uppercase tracking-wider text-white/30 mb-1 mt-3">{t.recent}</p>
+          <p className="px-2 text-[11px] uppercase tracking-wider text-ink/70 mb-1 mt-3">{t.recent}</p>
           {otherChats.length === 0 && pinnedChats.length === 0 && (
-            <p className="px-2 text-sm text-white/25">{search ? t.noMatches : t.noConvos}</p>
+            <p className="px-2 text-sm text-ink/70">{search ? t.noMatches : t.noConvos}</p>
           )}
           {otherChats.map((c) => (
             <ChatItem key={c.id} c={c} active={c.id === chatId}
@@ -868,24 +560,24 @@ export default function App() {
         </div>
 
         {/* Account */}
-        <div className="relative pt-2 border-t border-white/[0.06]">
+        <div className="relative pt-2 border-t border-ink/[0.06]">
           {showAccount && (
             <>
               <div className="fixed inset-0 z-10" onClick={() => setShowAccount(false)} />
-              <div className="absolute bottom-14 left-0 right-0 z-20 glass border border-white/[0.1] rounded-xl p-1.5 shadow-2xl">
+              <div className="absolute bottom-14 left-0 right-0 z-20 glass border border-ink/[0.1] rounded-xl p-1.5 shadow-2xl">
                 <button onClick={() => { setShowSettings(true); setShowAccount(false); }}
-                  className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg hover:bg-white/[0.06] text-sm text-white/80 transition">
+                  className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg hover:bg-ink/[0.06] text-sm text-ink/80 transition">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 00.33 1.82l.06.06a2 2 0 11-2.83 2.83l-.06-.06a1.65 1.65 0 00-1.82-.33 1.65 1.65 0 00-1 1.51V21a2 2 0 11-4 0v-.09A1.65 1.65 0 009 19.4a1.65 1.65 0 00-1.82.33l-.06.06a2 2 0 11-2.83-2.83l.06-.06a1.65 1.65 0 00.33-1.82 1.65 1.65 0 00-1.51-1H3a2 2 0 110-4h.09A1.65 1.65 0 004.6 9a1.65 1.65 0 00-.33-1.82l-.06-.06a2 2 0 112.83-2.83l.06.06a1.65 1.65 0 001.82.33H9a1.65 1.65 0 001-1.51V3a2 2 0 114 0v.09a1.65 1.65 0 001 1.51 1.65 1.65 0 001.82-.33l.06-.06a2 2 0 112.83 2.83l-.06.06a1.65 1.65 0 00-.33 1.82V9a1.65 1.65 0 001.51 1H21a2 2 0 110 4h-.09a1.65 1.65 0 00-1.51 1z"/></svg>
                   {t.settings}
                 </button>
                 <button onClick={() => { exportCurrentChat(); setShowAccount(false); }}
                   disabled={messages.length === 0}
-                  className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg hover:bg-white/[0.06] text-sm text-white/80 transition disabled:opacity-40 disabled:cursor-not-allowed">
+                  className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg hover:bg-ink/[0.06] text-sm text-ink/80 transition disabled:opacity-40 disabled:cursor-not-allowed">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
                   {t.exportChat}
                 </button>
                 <button onClick={clearAll}
-                  className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg hover:bg-white/[0.06] text-sm text-rose-300 transition">
+                  className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg hover:bg-ink/[0.06] text-sm text-brand transition">
                   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2"/></svg>
                   {t.clearConvos}
                 </button>
@@ -893,9 +585,9 @@ export default function App() {
             </>
           )}
           <button onClick={() => setShowAccount(!showAccount)}
-            className="flex items-center gap-2.5 w-full px-2 py-2 rounded-lg hover:bg-white/[0.04] transition">
-            <div className="w-8 h-8 rounded-full glossy-icon logo-glow flex items-center justify-center text-white text-xs font-semibold">{initials}</div>
-            <span className="text-sm text-white/80 truncate">{userName}</span>
+            className="flex items-center gap-2.5 w-full px-2 py-2 rounded-lg hover:bg-ink/[0.04] transition">
+            <div className="w-8 h-8 rounded-full glossy-icon flex items-center justify-center text-ink text-xs font-semibold">{initials}</div>
+            <span className="text-sm text-ink/80 truncate">{userName}</span>
           </button>
         </div>
       </aside>
@@ -904,11 +596,11 @@ export default function App() {
       <main className="flex-1 flex flex-col min-w-0 relative z-10 w-full">
 
         {/* Header */}
-        <header className="h-14 shrink-0 glass border-b border-white/[0.06] flex items-center justify-between px-3 md:px-5 gap-2">
+        <header className="h-14 shrink-0 glass border-b border-ink/[0.06] flex items-center justify-between px-3 md:px-5 gap-2">
           {/* Hamburger (mobile) */}
           <button
             onClick={() => setSidebarOpen(true)}
-            className="md:hidden w-9 h-9 rounded-lg flex items-center justify-center text-white/70 hover:text-white hover:bg-white/[0.06] transition"
+            className="md:hidden w-9 h-9 rounded-lg flex items-center justify-center text-ink/70 hover:text-ink hover:bg-ink/[0.06] transition"
             aria-label="Open sidebar"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
@@ -916,16 +608,16 @@ export default function App() {
 
           {/* Mobile center logo */}
           <div className="md:hidden flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md glossy-icon flex items-center justify-center text-white text-[11px] font-bold">D</div>
+            <div className="w-6 h-6 rounded-md glossy-icon flex items-center justify-center text-ink text-[11px] font-bold">D</div>
             <span className="font-semibold tracking-tight shimmer-text text-sm">DocMind</span>
           </div>
 
           <div className="hidden md:block flex-1" />
 
           <select value={model} onChange={(e) => setModel(e.target.value)}
-            className="bg-white/[0.06] border border-white/[0.1] rounded-lg px-2.5 md:px-3 py-1.5 text-[12.5px] md:text-sm text-white/80 outline-none cursor-pointer hover:border-accent-40 transition">
-            <option style={{ color: "#000" }} value="gemini-2.5-flash-lite">Flash-Lite</option>
-            <option style={{ color: "#000" }} value="gemini-2.5-flash">Flash</option>
+            className="bg-ink/[0.06] border border-ink/[0.1] rounded-lg px-2.5 md:px-3 py-1.5 text-[12.5px] md:text-sm text-ink/80 outline-none cursor-pointer hover:border-accent-40 transition">
+            <option value="gemini-2.5-flash-lite">Flash-Lite</option>
+            <option value="gemini-2.5-flash">Flash</option>
           </select>
         </header>
 
@@ -935,13 +627,17 @@ export default function App() {
 
             {messages.length === 0 && !loading ? (
               <div className="flex flex-col items-center justify-center text-center mt-16 md:mt-24 px-4">
-                <div className="w-14 h-14 rounded-2xl glossy-icon logo-float logo-glow flex items-center justify-center text-white text-2xl font-bold mb-5">D</div>
-                <h1 className="text-xl md:text-2xl font-semibold tracking-tight shimmer-text">{t.howCanIHelp}</h1>
-                <p className="text-white/40 mt-2 text-sm">{t.askAnything}</p>
+                <div className="w-14 h-14 rounded-2xl glossy-icon flex items-center justify-center text-ink text-2xl font-bold mb-5">D</div>
+                <h1 className="text-2xl md:text-4xl font-semibold tracking-tight shimmer-text">{t.howCanIHelp}</h1>
+                <p className="text-ink/70 mt-2 text-sm">{t.askAnything}</p>
+                <button onClick={() => fileRef.current?.click()} disabled={uploading}
+                  className="glossy-btn mt-5 rounded-xl px-5 py-2.5 text-sm font-semibold">
+                  {t.uploadPdf}
+                </button>
                 <div className="flex flex-wrap justify-center gap-2 mt-6 max-w-md">
                   {samples.map((s) => (
                     <button key={s} onClick={() => setQuestion(s)}
-                      className="px-3.5 py-2 rounded-xl glass-light water-input text-[13px] md:text-sm text-white/60 hover:text-white/90 hover:bg-white/[0.06] transition">
+                      className="px-3.5 py-2 rounded-xl glass-light water-input text-[13px] md:text-sm text-ink/80 hover:text-ink/90 hover:bg-ink/[0.06] transition">
                       {s}
                     </button>
                   ))}
@@ -963,11 +659,11 @@ export default function App() {
                               onChange={(e) => setEditText(e.target.value)}
                               rows={3}
                               autoFocus
-                              className="w-full bg-transparent outline-none resize-none text-[15px] leading-7 text-white/90"
+                              className="w-full bg-transparent outline-none resize-none text-[15px] leading-7 text-ink/90"
                             />
                             <div className="flex justify-end gap-2 mt-2">
-                              <button onClick={cancelEdit} className="px-3 py-1.5 rounded-lg text-[13px] text-white/60 hover:text-white hover:bg-white/[0.06] transition">{t.cancel}</button>
-                              <button onClick={saveEdit} className="px-3 py-1.5 rounded-lg text-[13px] glossy-btn text-white">{t.save}</button>
+                              <button onClick={cancelEdit} className="px-3 py-1.5 rounded-lg text-[13px] text-ink/80 hover:text-ink hover:bg-ink/[0.06] transition">{t.cancel}</button>
+                              <button onClick={saveEdit} className="px-3 py-1.5 rounded-lg text-[13px] glossy-btn text-ink">{t.save}</button>
                             </div>
                           </div>
                         </div>
@@ -981,7 +677,7 @@ export default function App() {
                         <button
                           onClick={() => startEdit(i, m.content)}
                           disabled={loading}
-                          className="md:opacity-0 md:group-hover:opacity-100 transition mt-1.5 px-2 py-1 rounded-lg text-[12px] text-white/40 hover:text-white hover:bg-white/[0.06] flex items-center gap-1.5"
+                          className="md:opacity-0 md:group-hover:opacity-100 transition mt-1.5 px-2 py-1 rounded-lg text-[12px] text-ink/70 hover:text-ink hover:bg-ink/[0.06] flex items-center gap-1.5"
                           title={t.edit}
                         >
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -994,10 +690,10 @@ export default function App() {
                   // assistant message
                   return (
                     <div key={i} className="flex gap-2.5 md:gap-3 group">
-                      <div className="w-7 h-7 rounded-lg glossy-icon logo-glow shrink-0 flex items-center justify-center text-white text-xs font-bold mt-0.5">D</div>
+                      <div className="w-7 h-7 rounded-lg glossy-icon shrink-0 flex items-center justify-center text-ink text-xs font-bold mt-0.5">D</div>
                       <div className="min-w-0 flex-1">
                         {m.isError
-                          ? <div className="text-[15px] text-rose-300 bg-rose-500/10 border border-rose-500/20 rounded-xl px-4 py-2.5">{m.content}</div>
+                          ? <div className="text-[15px] text-brand bg-page border border-brand/25 rounded-xl px-4 py-2.5">{m.content}</div>
                           : <AssistantText text={m.content} animate={m.animate} streaming={m.streaming} onTick={scrollToBottom} t={t} />
                         }
                         {!m.isError && !m.streaming && <Sources sources={m.sources} t={t} />}
@@ -1015,14 +711,14 @@ export default function App() {
 
                 {loading && !messages[messages.length - 1]?.streaming && (
                   <div className="flex gap-2.5 md:gap-3">
-                    <div className="w-7 h-7 rounded-lg glossy-icon logo-glow shrink-0 flex items-center justify-center text-white text-xs font-bold">D</div>
+                    <div className="w-7 h-7 rounded-lg glossy-icon shrink-0 flex items-center justify-center text-ink text-xs font-bold">D</div>
                     <div className="flex items-center gap-2 mt-2.5">
                       <div className="flex items-center gap-1.5">
                         {[0, 1, 2].map((d) => (
                           <span key={d} className="w-2 h-2 rounded-full bg-accent water-dot" style={{ animationDelay: `${d * 0.18}s` }} />
                         ))}
                       </div>
-                      <span className="text-[13px] text-white/35">{t.thinking}</span>
+                      <span role="status" className="text-[13px] text-ink/70">{slowReply ? t.slowReply : t.thinking}</span>
                     </div>
                   </div>
                 )}
@@ -1035,7 +731,7 @@ export default function App() {
           {showScrollDown && (
             <button
               onClick={scrollToBottom}
-              className="fixed md:absolute bottom-28 md:bottom-32 right-4 md:right-8 z-20 w-10 h-10 rounded-full glass border border-white/[0.12] hover:border-accent-40 flex items-center justify-center text-white/70 hover:text-white transition shadow-xl"
+              className="fixed md:absolute bottom-28 md:bottom-32 right-4 md:right-8 z-20 w-10 h-10 rounded-full glass border border-ink/[0.12] hover:border-accent-40 flex items-center justify-center text-ink/70 hover:text-ink transition shadow-xl"
               title={t.scrollDown}
               aria-label={t.scrollDown}
             >
@@ -1050,16 +746,16 @@ export default function App() {
             {(attached.length > 0 || uploading || error) && (
               <div className="flex flex-wrap gap-2 items-center mb-2 px-1">
                 {attached.map((n, i) => (
-                  <span key={i} className="inline-flex items-center gap-1.5 text-[12px] glass-light border border-white/[0.1] px-2.5 py-1 rounded-lg text-white/70">
+                  <span key={i} className="inline-flex items-center gap-1.5 text-[12px] glass-light border border-ink/[0.1] px-2.5 py-1 rounded-lg text-ink/70">
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
                     <span className="truncate max-w-[120px] md:max-w-[160px]">{n}</span>
-                    <button onClick={() => removeAttached(i)} className="ml-0.5 text-white/40 hover:text-rose-300 transition" aria-label="Remove">
+                    <button onClick={() => removeAttached(i)} className="ml-0.5 text-ink/70 hover:text-brand transition" aria-label="Remove">
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
                     </button>
                   </span>
                 ))}
                 {uploading && <span className="text-[12px] text-accent-strong">{t.indexing}</span>}
-                {error && <span className="text-[12px] text-rose-300">{error}</span>}
+                {error && <span className="text-[12px] text-brand">{error}</span>}
               </div>
             )}
 
@@ -1069,9 +765,9 @@ export default function App() {
                 {showPlus && (
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setShowPlus(false)} />
-                    <div className="absolute bottom-11 left-0 z-20 w-44 glass border border-white/[0.1] rounded-xl p-1.5 shadow-2xl">
+                    <div className="absolute bottom-11 left-0 z-20 w-44 glass border border-ink/[0.1] rounded-xl p-1.5 shadow-2xl">
                       <button onClick={() => { setShowPlus(false); fileRef.current?.click(); }}
-                        className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg hover:bg-white/[0.06] text-sm text-white/80 transition">
+                        className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg hover:bg-ink/[0.06] text-sm text-ink/80 transition">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
                         {t.uploadPdf}
                       </button>
@@ -1079,7 +775,7 @@ export default function App() {
                   </>
                 )}
                 <button onClick={() => setShowPlus(!showPlus)}
-                  className="w-10 h-10 md:w-9 md:h-9 rounded-lg flex items-center justify-center text-white/50 hover:text-white hover:bg-white/[0.06] transition" title="Add">
+                  className="w-10 h-10 md:w-9 md:h-9 rounded-lg flex items-center justify-center text-ink/75 hover:text-ink hover:bg-ink/[0.06] transition" title="Add">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
                 </button>
               </div>
@@ -1091,31 +787,31 @@ export default function App() {
                 rows={1}
                 onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); ask(); } }}
                 placeholder={t.messageDocMind}
-                className="flex-1 bg-transparent outline-none resize-none text-[15px] py-1.5 max-h-44 placeholder:text-white/30"
+                className="min-w-0 flex-1 bg-transparent outline-none resize-none text-base py-1.5 max-h-44 placeholder:text-ink/70"
               />
 
               <button onClick={toggleVoice} title={t.voice}
-                className={`w-10 h-10 md:w-9 md:h-9 rounded-lg flex items-center justify-center transition ${listening ? "glossy-btn text-white" : "text-white/50 hover:text-white hover:bg-white/[0.06]"}`}>
+                className={`w-10 h-10 md:w-9 md:h-9 rounded-lg flex items-center justify-center transition ${listening ? "glossy-btn text-ink" : "text-ink/75 hover:text-ink hover:bg-ink/[0.06]"}`}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 00-3 3v8a3 3 0 006 0V4a3 3 0 00-3-3z"/><path d="M19 10v2a7 7 0 01-14 0v-2M12 19v4"/></svg>
               </button>
 
               {loading ? (
                 <button onClick={stop} title={t.stop}
-                  className="w-10 h-10 md:w-9 md:h-9 rounded-lg glossy-btn flex items-center justify-center text-white">
+                  className="w-10 h-10 md:w-9 md:h-9 rounded-lg glossy-btn flex items-center justify-center text-ink">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
                 </button>
               ) : (
-                <button onClick={() => ask()} disabled={!question.trim()}
-                  className="w-10 h-10 md:w-9 md:h-9 rounded-lg glossy-btn flex items-center justify-center text-white">
+                <button onClick={() => ask()} disabled={!question.trim()} aria-label={t.send}
+                  className="w-10 h-10 md:w-9 md:h-9 rounded-lg glossy-btn flex items-center justify-center text-ink">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
                 </button>
               )}
             </div>
 
             <div className="flex items-center justify-between mt-2 px-1">
-              <p className="text-[10.5px] md:text-[11px] text-white/25">{t.docMindMistakes}</p>
+              <p className="text-[10.5px] md:text-[11px] text-ink/70">{t.docMindMistakes}</p>
               {question.length > 0 && (
-                <p className="text-[10.5px] md:text-[11px] text-white/30 tabular-nums">{question.length}</p>
+                <p className="text-[10.5px] md:text-[11px] text-ink/70 tabular-nums">{question.length}</p>
               )}
             </div>
           </div>
@@ -1125,72 +821,49 @@ export default function App() {
       {/* ════════ Settings modal ════════ */}
       {showSettings && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4" onClick={() => setShowSettings(false)}>
-          <div className="glass border border-white/[0.1] rounded-2xl w-full max-w-md p-5 shadow-2xl max-h-[90dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+          <div className="glass border border-ink/[0.1] rounded-2xl w-full max-w-md p-5 shadow-2xl max-h-[90dvh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
             <div className="flex items-center justify-between mb-5">
               <h2 className="text-lg font-semibold shimmer-text">{t.settings}</h2>
-              <button onClick={() => setShowSettings(false)} className="text-white/40 hover:text-white transition">
+              <button onClick={() => setShowSettings(false)} className="text-ink/70 hover:text-ink transition">
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
               </button>
             </div>
 
             {/* Your name */}
-            <div className="flex items-center justify-between py-3 border-b border-white/[0.06] gap-3">
-              <span className="text-sm text-white/70 shrink-0">{t.yourName}</span>
+            <div className="flex items-center justify-between py-3 border-b border-ink/[0.06] gap-3">
+              <span className="text-sm text-ink/70 shrink-0">{t.yourName}</span>
               <input
                 value={userName}
                 onChange={(e) => setUserName(e.target.value)}
-                className="bg-white/[0.06] border border-white/[0.1] rounded-lg px-3 py-1.5 text-sm outline-none w-44 text-right focus:border-accent-40 transition"
+                className="bg-ink/[0.06] border border-ink/[0.1] rounded-lg px-3 py-1.5 text-sm outline-none w-44 text-right focus:border-accent-40 transition"
                 maxLength={30}
               />
             </div>
 
             {/* Language */}
-            <div className="flex items-center justify-between py-3 border-b border-white/[0.06]">
-              <span className="text-sm text-white/70">{t.language}</span>
+            <div className="flex items-center justify-between py-3 border-b border-ink/[0.06]">
+              <span className="text-sm text-ink/70">{t.language}</span>
               <select value={lang} onChange={(e) => setLang(e.target.value)}
-                className="bg-white/[0.06] border border-white/[0.1] rounded-lg px-3 py-1.5 text-sm outline-none cursor-pointer">
-                {LANGS.map((l) => <option key={l.value} style={{ color: "#000" }} value={l.value}>{l.label}</option>)}
+                className="bg-ink/[0.06] border border-ink/[0.1] rounded-lg px-3 py-1.5 text-sm outline-none cursor-pointer">
+                {LANGS.map((l) => <option key={l.value} value={l.value}>{l.label}</option>)}
               </select>
             </div>
 
-            {/* Accent color */}
-            <div className="py-3 border-b border-white/[0.06]">
-              <div className="flex items-center justify-between mb-2.5">
-                <span className="text-sm text-white/70">{t.accentColor}</span>
-                <span className="text-[12px] text-white/40 capitalize">{accent}</span>
-              </div>
-              <div className="flex gap-2 flex-wrap">
-                {ACCENT_COLORS.map((c) => (
-                  <button
-                    key={c.value}
-                    onClick={() => setAccent(c.value)}
-                    title={c.label}
-                    className={`w-9 h-9 rounded-xl transition relative ${accent === c.value ? "ring-2 ring-offset-2 ring-offset-[#0b0a0d] ring-white/60 scale-105" : "hover:scale-105"}`}
-                    style={{ background: `rgb(${c.rgb})` }}
-                  >
-                    {accent === c.value && (
-                      <svg className="absolute inset-0 m-auto" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#0b0a0d" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>
-                    )}
-                  </button>
-                ))}
-              </div>
-            </div>
-
             {/* Default model */}
-            <div className="flex items-center justify-between py-3 border-b border-white/[0.06]">
-              <span className="text-sm text-white/70">{t.defaultModel}</span>
+            <div className="flex items-center justify-between py-3 border-b border-ink/[0.06]">
+              <span className="text-sm text-ink/70">{t.defaultModel}</span>
               <select value={model} onChange={(e) => setModel(e.target.value)}
-                className="bg-white/[0.06] border border-white/[0.1] rounded-lg px-3 py-1.5 text-sm outline-none cursor-pointer">
-                <option style={{ color: "#000" }} value="gemini-2.5-flash-lite">Flash-Lite</option>
-                <option style={{ color: "#000" }} value="gemini-2.5-flash">Flash</option>
+                className="bg-ink/[0.06] border border-ink/[0.1] rounded-lg px-3 py-1.5 text-sm outline-none cursor-pointer">
+                <option value="gemini-2.5-flash-lite">Flash-Lite</option>
+                <option value="gemini-2.5-flash">Flash</option>
               </select>
             </div>
 
             {/* Export */}
-            <div className="flex items-center justify-between py-3 border-b border-white/[0.06]">
-              <span className="text-sm text-white/70">{t.exportChat}</span>
+            <div className="flex items-center justify-between py-3 border-b border-ink/[0.06]">
+              <span className="text-sm text-ink/70">{t.exportChat}</span>
               <button onClick={exportCurrentChat} disabled={messages.length === 0}
-                className="text-sm px-3 py-1.5 rounded-lg bg-white/[0.06] hover:bg-white/[0.1] text-white/80 transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5">
+                className="text-sm px-3 py-1.5 rounded-lg bg-ink/[0.06] hover:bg-ink/[0.1] text-ink/80 transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center gap-1.5">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
                 .md
               </button>
@@ -1198,14 +871,14 @@ export default function App() {
 
             {/* Clear */}
             <div className="flex items-center justify-between py-3">
-              <span className="text-sm text-white/70">{t.clearConvos}</span>
+              <span className="text-sm text-ink/70">{t.clearConvos}</span>
               <button onClick={clearAll}
-                className="text-sm px-3 py-1.5 rounded-lg bg-rose-500/15 text-rose-300 hover:bg-rose-500/25 transition">
+                className="text-sm px-3 py-1.5 rounded-lg bg-brand/15 text-brand hover:bg-brand/25 transition">
                 {t.clear}
               </button>
             </div>
 
-            <p className="text-[11px] text-white/30 mt-2 leading-relaxed">{t.typeMore}</p>
+            <p className="text-[11px] text-ink/70 mt-2 leading-relaxed">{t.typeMore}</p>
           </div>
         </div>
       )}
@@ -1244,7 +917,7 @@ function ChatItem({ c, active, onClick, onPin, onDel, onRename, t }) {
           }}
           onClick={(e) => e.stopPropagation()}
           maxLength={60}
-          className="w-full bg-white/[0.06] border border-accent-40 rounded-lg px-2 py-1.5 text-sm outline-none text-white"
+          className="w-full bg-ink/[0.06] border border-accent-40 rounded-lg px-2 py-1.5 text-sm outline-none text-ink"
         />
       </div>
     );
@@ -1252,7 +925,7 @@ function ChatItem({ c, active, onClick, onPin, onDel, onRename, t }) {
 
   return (
     <div onClick={onClick}
-      className={`group flex items-center justify-between gap-1 px-2.5 py-2 rounded-lg cursor-pointer text-sm transition ${active ? "chat-active text-white" : "text-white/55 hover:bg-white/[0.04]"}`}>
+      className={`group flex items-center justify-between gap-1 px-2.5 py-2 rounded-lg cursor-pointer text-sm transition ${active ? "chat-active text-ink" : "text-ink/70 hover:bg-ink/[0.04]"}`}>
       <div className="flex items-center gap-1.5 min-w-0 flex-1" onDoubleClick={startRename}>
         {c.pinned && (
           <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" className="text-accent-strong shrink-0">
@@ -1263,19 +936,19 @@ function ChatItem({ c, active, onClick, onPin, onDel, onRename, t }) {
       </div>
       <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition">
         <button onClick={startRename}
-          className="p-1 rounded text-white/30 hover:text-white/80 transition"
+          className="p-1 rounded text-ink/70 hover:text-ink/80 transition"
           title={t.rename}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
         </button>
         <button onClick={(e) => onPin(c.id, e)}
-          className="p-1 rounded text-white/30 hover:text-white/80 transition"
+          className="p-1 rounded text-ink/70 hover:text-ink/80 transition"
           title={c.pinned ? t.unpin : t.pin}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill={c.pinned ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2">
             <path d="M12 2l2.4 7.4H22l-6.2 4.5 2.4 7.4L12 16.8 5.8 21.3l2.4-7.4L2 9.4h7.6z"/>
           </svg>
         </button>
         <button onClick={(e) => onDel(c.id, e)}
-          className="p-1 rounded text-white/30 hover:text-rose-300 transition"
+          className="p-1 rounded text-ink/70 hover:text-brand transition"
           title={t.deleteChat}>
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
         </button>
