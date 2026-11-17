@@ -28,7 +28,9 @@ From `frontend/`, run `npm ci` and `npm start` with Node 22. Open http://localho
 
 ## Deployment
 
-Configure a single API instance and one worker with durable storage for both `DOCMIND_DB_PATH` and `CHROMA_PATH`. Set both paths under the actual mounted directory. For a disk mounted at `/var/data`, use `/var/data/docmind.sqlite3` and `/var/data/chroma`. Use a fresh per-account index and back up both stores. SQLite holds account, session, chat, and usage data. Chroma holds the private PDF index.
+The public demo runs on Render Free. A restart, idle spin-down, or redeploy clears registered accounts, sessions, saved chats, and the PDF index.
+
+For a deployment that retains accounts and documents, configure a single API instance and one worker with durable storage for both `DOCMIND_DB_PATH` and `CHROMA_PATH`. Set both paths under the actual mounted directory. For a disk mounted at `/var/data`, use `/var/data/docmind.sqlite3` and `/var/data/chroma`. Use a fresh per-account index and back up both stores. SQLite holds account, session, chat, and usage data. Chroma holds the private PDF index.
 
 Set `CORS_ORIGINS` to the exact HTTPS frontend origin and configure the frontend's `REACT_APP_API_URL` with the HTTPS API base URL. Keep provider API keys in backend environment settings.
 

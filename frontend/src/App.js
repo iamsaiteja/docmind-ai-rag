@@ -109,7 +109,7 @@ const LS = {
 /* ════════════════════════════════════════════════════════
    MAIN APP
 ════════════════════════════════════════════════════════ */
-export default function App({ token, api, workspace, onExit, leaving, onPlans, onAdmin, reload }) {
+export default function App({ token, api, workspace, onExit, leaving, onPlans, onAdmin, reload, storageNotice }) {
   const guest = workspace.profile.role === "guest";
   /* ── persistent prefs (localStorage) ─────────────────── */
   const [lang, setLang] = useState(() => localStorage.getItem(LS.lang) || "en");
@@ -644,6 +644,7 @@ export default function App({ token, api, workspace, onExit, leaving, onPlans, o
           </select>
         </header>
 
+        {!guest && <p className="border-b border-ink/10 px-4 py-2 text-sm text-ink/80">{storageNotice}</p>}
         {guest && <p className="px-4 py-2 text-sm text-ink/70">Guest demo · 5 questions about the sample library guide. Sign in to upload PDFs and save chats.</p>}
         {saveError && <p className="px-4 py-2 text-sm text-rose-300" role="alert">
           {typeof saveError === "string" ? saveError : "Chat save failed."}{" "}

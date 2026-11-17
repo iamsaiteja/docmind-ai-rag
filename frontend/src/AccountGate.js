@@ -5,6 +5,7 @@ import App from "./App";
 import PlansDialog from "./PlansDialog";
 
 const TOKEN_KEY = "docmind-account-token";
+const freeHostingNotice = "Free hosting uses temporary storage. A server restart clears accounts, saved chats, and uploaded documents.";
 const button = "rounded-lg border border-white/20 px-3 py-2 text-sm hover:bg-white/10 disabled:opacity-50";
 const field = "w-full rounded-lg border border-white/20 bg-black/30 p-3 text-white";
 
@@ -147,13 +148,15 @@ export default function AccountGate() {
   }} />;
   if (workspace) return <>
     <App token={token} api={api} workspace={workspace} onExit={leave} leaving={leaving} onPlans={() => setShowPlans(true)}
-      onAdmin={workspace.profile.role === "admin" ? () => setAdmin(true) : null} reload={() => window.location.reload()} />
+      onAdmin={workspace.profile.role === "admin" ? () => setAdmin(true) : null} reload={() => window.location.reload()}
+      storageNotice={freeHostingNotice} />
     {plansDialog}
   </>;
   return (
     <main className="grid min-h-screen place-items-center bg-[#0b0a0d] p-4 text-white">
       <section className="w-full max-w-md rounded-2xl border border-white/15 bg-white/5 p-6">
         <h1 className="mb-4 text-3xl font-bold">DocMind</h1>
+        <p className="mb-4 rounded-lg border border-white/15 p-3 text-sm text-white/80">{freeHostingNotice}</p>
         {token ? <p>Opening your workspace…</p> : <>
           <form className="space-y-3" onSubmit={(event) => {
             event.preventDefault();
