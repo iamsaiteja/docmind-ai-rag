@@ -1,8 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
-import axios from "axios";
 import { AssistantText, MessageActions, Sources } from "./ChatMessages";
 
-const API = process.env.REACT_APP_API_URL || "https://docmind-12ms.onrender.com";
+import { API } from "./apiClient";
 const FIRST_REPLY_TIMEOUT = 75_000;
 const STREAM_IDLE_TIMEOUT = 35_000;
 const SLOW_REPLY_NOTICE = 5_000;
@@ -110,15 +109,15 @@ const LS = {
 /* ════════════════════════════════════════════════════════
    MAIN APP
 ════════════════════════════════════════════════════════ */
-export default function App() {
+export default function App({ token, api, workspace, onExit, leaving, onPlans, onAdmin, reload }) {
+  const guest = workspace.profile.role === "guest";
   /* ── persistent prefs (localStorage) ─────────────────── */
   const [lang, setLang] = useState(() => localStorage.getItem(LS.lang) || "en");
-  const [userName, setUserName] = useState(() => localStorage.getItem(LS.name) || "Sai Teja");
+  const [userName, setUserName] = useState(() => guest ? "Guest" : workspace.profile.email);
   const [model, setModel] = useState(() => localStorage.getItem(LS.model) || "gemini-2.5-flash-lite");
   const t = STRINGS[lang] || STRINGS.en;
 
   useEffect(() => { localStorage.setItem(LS.lang, lang); }, [lang]);
-  useEffect(() => { localStorage.setItem(LS.name, userName); }, [userName]);
   useEffect(() => { localStorage.setItem(LS.model, model); }, [model]);
 
   /* ── chat state ─────────────────────────────────────── */
@@ -127,13 +126,15 @@ export default function App() {
   const [loading, setLoading] = useState(false);
   const [slowReply, setSlowReply] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [attached, setAttached] = useState([]);
+  const [attached, setAttached] = useState(workspace.files);
   const [error, setError] = useState("");
   const [listening, setListening] = useState(false);
-  const [chats, setChats] = useState(() => {
-    try { return JSON.parse(localStorage.getItem(LS.chats)) || []; }
-    catch { return []; }
-  });
+  const [chats, setChats] = useState(workspace.chats);
+  const savedChats = useRef(workspace.chats);
+  const revision = useRef(workspace.revision);
+  const saving = useRef(false);
+  const [savePending, setSavePending] = useState(false);
+  const [saveError, setSaveError] = useState("");
   const [chatId, setChatId] = useState(null);
   const [search, setSearch] = useState("");
   const [showAccount, setShowAccount] = useState(false);
@@ -155,7 +156,22 @@ export default function App() {
   const scrollToBottom = () => bottomRef.current?.scrollIntoView({ behavior: "smooth" });
 
   /* ── effects ────────────────────────────────────────── */
-  useEffect(() => { localStorage.setItem(LS.chats, JSON.stringify(chats)); }, [chats]);
+  useEffect(() => {
+    if (guest || chats === savedChats.current || saving.current || saveError) return;
+    saving.current = true;
+    setSavePending(true);
+    api.post("/chats", { revision: revision.current, chats })
+      .then(({ data }) => {
+        revision.current = data.revision;
+        savedChats.current = chats;
+      })
+      .catch((err) => setSaveError(err.response?.data?.detail || "Chat save failed. Your latest changes are in this tab."))
+      .finally(() => {
+        saving.current = false;
+        setSavePending(false);
+      });
+  }, [api, chats, guest, saveError, savePending]);
+  useEffect(() => () => abortRef.current?.abort(), []);
   useEffect(() => { scrollToBottom(); }, [messages, loading]);
 
   // Auto-resize textarea
@@ -251,13 +267,13 @@ export default function App() {
   /* ── file upload ────────────────────────────────────── */
   const onPickFiles = async (e) => {
     const picked = Array.from(e.target.files); e.target.value = "";
-    if (!picked.length) return;
+    if (!picked.length || guest) return;
     setUploading(true); setError("");
     const fd = new FormData();
     picked.forEach((f) => fd.append("files", f));
     try {
-      const res = await axios.post(`${API}/upload-pdf`, fd);
-      setAttached((p) => [...p, ...(res.data.files || []).map((f) => f.filename)]);
+      const res = await api.post("/upload-pdf", fd);
+      setAttached((p) => [...new Set([...p, ...(res.data.files || []).map((f) => f.filename)])]);
     } catch (err) {
       setError(t.uploadFailed + (err.response?.data?.detail || err.message));
     } finally {
@@ -272,14 +288,16 @@ export default function App() {
   const askStream = async (q, history, base, controller, onDelta) => {
     const res = await fetch(`${API}/ask-stream`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ question: q, model, history }),
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ question: q, model, history: history.slice(-10) }),
       signal: controller.signal,
     });
-    if ([404, 405, 501].includes(res.status) || (res.ok && !res.body)) {
-      throw new Error("no-stream");
+    if ([404, 405, 501].includes(res.status)) throw new Error("no-stream");
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(typeof data.detail === "string" ? data.detail : `HTTP ${res.status}`);
     }
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.body) throw new Error("Streaming is unavailable.");
 
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
@@ -376,8 +394,8 @@ export default function App() {
         });
       } catch (e) {
         if (e.message !== "no-stream") throw e;
-        const { data } = await axios.post(
-          `${API}/ask`,
+        const { data } = await api.post(
+          "/ask",
           { question: q, model, history },
           { signal: controller.signal }
         );
@@ -483,7 +501,9 @@ export default function App() {
   const sortedChats = [...filtered].sort((a, b) => (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0));
   const pinnedChats = sortedChats.filter((c) => c.pinned);
   const otherChats = sortedChats.filter((c) => !c.pinned);
-  const samples = [t.summarize, t.explainEli5, t.listKeyPoints];
+  const samples = guest
+    ? ["When does the library open?", "How many books can I borrow?", "How do I get a library card?"]
+    : [t.summarize, t.explainEli5, t.listKeyPoints];
 
   /* ════════════════════════════════════════════════════
      RENDER
@@ -596,7 +616,7 @@ export default function App() {
       <main className="flex-1 flex flex-col min-w-0 relative z-10 w-full">
 
         {/* Header */}
-        <header className="h-14 shrink-0 glass border-b border-ink/[0.06] flex items-center justify-between px-3 md:px-5 gap-2">
+        <header className="h-14 shrink-0 glass border-b border-ink/[0.06] flex items-center justify-between px-2 sm:px-3 md:px-5 gap-1.5 sm:gap-2">
           {/* Hamburger (mobile) */}
           <button
             onClick={() => setSidebarOpen(true)}
@@ -609,17 +629,26 @@ export default function App() {
           {/* Mobile center logo */}
           <div className="md:hidden flex items-center gap-2">
             <div className="w-6 h-6 rounded-md glossy-icon flex items-center justify-center text-ink text-[11px] font-bold">D</div>
-            <span className="font-semibold tracking-tight shimmer-text text-sm">DocMind</span>
+            <span className="font-semibold tracking-tight shimmer-text text-sm hidden min-[400px]:inline">DocMind</span>
           </div>
 
           <div className="hidden md:block flex-1" />
+          {onAdmin && <button className="text-sm underline" disabled={savePending || loading || uploading || !!saveError} onClick={onAdmin}>Admin</button>}
+          <button className="text-sm underline" onClick={onPlans}>Plans</button>
+          <button className="text-sm underline" disabled={leaving || savePending || loading || uploading} onClick={onExit}>{guest ? "Login" : "Logout"}</button>
 
-          <select value={model} onChange={(e) => setModel(e.target.value)}
-            className="bg-ink/[0.06] border border-ink/[0.1] rounded-lg px-2.5 md:px-3 py-1.5 text-[12.5px] md:text-sm text-ink/80 outline-none cursor-pointer hover:border-accent-40 transition">
+          <select disabled={guest} value={guest ? "gemini-2.5-flash-lite" : model} onChange={(e) => setModel(e.target.value)}
+            className="max-w-[6.5rem] bg-ink/[0.06] border border-ink/[0.1] rounded-lg px-2.5 md:px-3 py-1.5 text-[12.5px] md:text-sm text-ink/80 outline-none cursor-pointer hover:border-accent-40 transition">
             <option value="gemini-2.5-flash-lite">Flash-Lite</option>
             <option value="gemini-2.5-flash">Flash</option>
           </select>
         </header>
+
+        {guest && <p className="px-4 py-2 text-sm text-ink/70">Guest demo · 5 questions about the sample library guide. Sign in to upload PDFs and save chats.</p>}
+        {saveError && <p className="px-4 py-2 text-sm text-rose-300" role="alert">
+          {typeof saveError === "string" ? saveError : "Chat save failed."}{" "}
+          <button className="underline" onClick={reload}>Reload saved history</button>
+        </p>}
 
         {/* Messages */}
         <div ref={scrollerRef} className="flex-1 overflow-y-auto relative">
@@ -629,11 +658,11 @@ export default function App() {
               <div className="flex flex-col items-center justify-center text-center mt-16 md:mt-24 px-4">
                 <div className="w-14 h-14 rounded-2xl glossy-icon flex items-center justify-center text-ink text-2xl font-bold mb-5">D</div>
                 <h1 className="text-2xl md:text-4xl font-semibold tracking-tight shimmer-text">{t.howCanIHelp}</h1>
-                <p className="text-ink/70 mt-2 text-sm">{t.askAnything}</p>
-                <button onClick={() => fileRef.current?.click()} disabled={uploading}
+                <p className="text-ink/70 mt-2 text-sm">{guest ? "Try a question about the sample library guide." : "Upload a PDF to ask questions about it."}</p>
+                {!guest && <button onClick={() => fileRef.current?.click()} disabled={uploading}
                   className="glossy-btn mt-5 rounded-xl px-5 py-2.5 text-sm font-semibold">
                   {t.uploadPdf}
-                </button>
+                </button>}
                 <div className="flex flex-wrap justify-center gap-2 mt-6 max-w-md">
                   {samples.map((s) => (
                     <button key={s} onClick={() => setQuestion(s)}
@@ -761,7 +790,7 @@ export default function App() {
 
             <div className="flex items-end gap-1.5 md:gap-2 glass water-input rounded-2xl px-2 md:px-2.5 py-2 transition">
               {/* + menu */}
-              <div className="relative">
+              {!guest && <div className="relative">
                 {showPlus && (
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setShowPlus(false)} />
@@ -778,7 +807,7 @@ export default function App() {
                   className="w-10 h-10 md:w-9 md:h-9 rounded-lg flex items-center justify-center text-ink/75 hover:text-ink hover:bg-ink/[0.06] transition" title="Add">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 5v14M5 12h14"/></svg>
                 </button>
-              </div>
+              </div>}
 
               <textarea
                 ref={textareaRef}
@@ -852,7 +881,7 @@ export default function App() {
             {/* Default model */}
             <div className="flex items-center justify-between py-3 border-b border-ink/[0.06]">
               <span className="text-sm text-ink/70">{t.defaultModel}</span>
-              <select value={model} onChange={(e) => setModel(e.target.value)}
+              <select disabled={guest} value={guest ? "gemini-2.5-flash-lite" : model} onChange={(e) => setModel(e.target.value)}
                 className="bg-ink/[0.06] border border-ink/[0.1] rounded-lg px-3 py-1.5 text-sm outline-none cursor-pointer">
                 <option value="gemini-2.5-flash-lite">Flash-Lite</option>
                 <option value="gemini-2.5-flash">Flash</option>

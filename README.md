@@ -1,211 +1,45 @@
 # DocMind by Saiteja
 
-##  Screenshots
+Upload a PDF, ask questions, and get streamed answers with page references. DocMind uses React, FastAPI, ChromaDB, and Gemini. [Current public demo](https://docmind-mocha.vercel.app/)
 
-### Home Page
+## Access
 
-![Home](home.png)
+| Role | Features |
+|---|---|
+| Guest | Five questions per guest session about a built-in sample library guide. Guest chats live in the open tab. |
+| Registered user | Private indexing of uploaded PDFs, page references, and saved chat history available after signing back in. |
+| Admin | A user list with registered emails, roles, signup dates, and last activity. Counts include accounts, accounts active in the last 24 hours, and guest sessions. A guest session is a visit session and may represent a repeat visitor. |
 
-> An AI-powered document assistant built with RAG (Retrieval-Augmented Generation). Upload PDFs, ask questions, get answers grounded in your documents with source citations.
+Chat and document access is scoped to the authenticated account on the backend. The admin endpoint returns account metadata and counts. Passwords are stored as salted PBKDF2 hashes, and sign-out revokes the current session. The browser stores the session token in tab storage and keeps chat content out of browser local storage.
 
-[Open DocMind by Saiteja](https://docmind-mocha.vercel.app/)
-[![GitHub Repo](https://img.shields.io/badge/GitHub-Repository-black)](https://github.com/iamsaiteja/docmind)
-[![Python](https://img.shields.io/badge/Python-3.10+-blue)]()
-[![FastAPI](https://img.shields.io/badge/FastAPI-Backend-009688)]()
-[![React](https://img.shields.io/badge/React-Frontend-61DAFB)]()
-[![Gemini](https://img.shields.io/badge/Google-Gemini-orange)]()
-[![ChromaDB](https://img.shields.io/badge/VectorDB-ChromaDB-purple)]()
+Uploaded PDFs are parsed in memory. The document index persists extracted text, embeddings, file names, and page numbers. Gemini receives text for embedding and matching excerpts and chat context for answer generation. Each PDF can contain up to 10 MiB, 100 pages, and 1,000 chunks. Upload counts depend on the account plan. Scanned and encrypted PDFs are outside the current workflow. Existing shared and anonymous indexes are excluded because their files cannot be mapped safely to signed-in accounts. Account owners should upload their source files again.
 
-![Stars](https://img.shields.io/github/stars/iamsaiteja/docmind)
-![Forks](https://img.shields.io/github/forks/iamsaiteja/docmind)
-![Issues](https://img.shields.io/github/issues/iamsaiteja/docmind)
+## Plans
 
----
+Signed-in accounts start on Free. Free allows 10 questions and 3 PDFs per day, 1 PDF per upload, and up to 1,000 indexed text chunks. Pro costs ₹600 for 30 days and allows 100 questions and 25 PDFs per day, 5 PDFs per upload, and 5,000 indexed text chunks. Both plans include private PDFs and saved chats. Shared service quotas also apply.
 
-##  Features
+Users request Pro in **Plans**. Requests appear first in the **Admin** dashboard. After receiving and confirming payment outside DocMind, select **Activate Pro**. DocMind records the expiration date. The account returns to Free after 30 days and keeps its previously indexed PDFs and chat history. Payment collection and automatic renewal require a separate integration.
 
--  **Real-time Streaming** — Answers stream word-by-word as they're generated (SSE), just like ChatGPT
--  **Conversation Memory** — Follow-up questions understand context ("explain that more", "what about it?")
--  **Multi-PDF Upload** — Upload and query multiple documents simultaneously
--  **Conversational Q&A** — Natural language questions over your documents
--  **Source Citations** — Every answer is grounded with the exact source chunks
--  **Rich Markdown** — Tables, links, numbered lists, blockquotes, code blocks with copy
--  **AI Chat Titles** — Chats are auto-named by AI after the first exchange, with inline rename
--  **Voice Input** — Ask questions via speech recognition
--  **Model Selection** — Switch between Gemini Flash and Flash-Lite
--  **Chat History** — Conversations persist across sessions (localStorage)
--  **Modern UI** — Dark theme with liquid-glass animations
+## Local setup
 
----
+From `backend/`, create a Python 3.12 virtual environment, install `requirements.txt`, and copy `.env.example` to `.env`. Set `GEMINI_API_KEY`, then run `uvicorn main:app --reload`.
 
-##  Architecture
+From `frontend/`, run `npm ci` and `npm start` with Node 22. Open http://localhost:3000. The local API uses http://localhost:8000.
 
-┌─────────────────┐         ┌──────────────────┐         ┌───────────────┐
+## Deployment
 
-│   React (UI)    │ ──────► │   FastAPI (API)  │ ──────► │  Google Gemini│
+Configure a single API instance and one worker with durable storage for both `DOCMIND_DB_PATH` and `CHROMA_PATH`. Set both paths under the actual mounted directory. For a disk mounted at `/var/data`, use `/var/data/docmind.sqlite3` and `/var/data/chroma`. Use a fresh per-account index and back up both stores. SQLite holds account, session, chat, and usage data. Chroma holds the private PDF index.
 
-│   Vercel        │         │   Render         │         │  (LLM + Embed)│
+Set `CORS_ORIGINS` to the exact HTTPS frontend origin and configure the frontend's `REACT_APP_API_URL` with the HTTPS API base URL. Keep provider API keys in backend environment settings.
 
-└─────────────────┘         └────────┬─────────┘         └───────────────┘
+In the running backend shell, from the directory containing `accounts.py`, run `python accounts.py` to create the admin account on the persistent database. The password prompts are hidden. Use a separate admin email if that address already has a registered account. Sign in with the admin account and open **Admin** in the header.
 
-│
+The current beta uses email addresses supplied during registration. Email verification and self-service password recovery are future work. The API enforces daily quotas for guest starts, authentication, questions, and upload requests. Configure provider quotas and gateway request-size limits before broad rollout. Counts start with the new deployment's database.
 
-▼
+## Validation
 
-┌──────────────────┐
+- Backend. Run `python -m pytest -q` from `backend/` with pytest and httpx installed. Isolation tests use a temporary database and mock Gemini.
+- Frontend. Run `CI=true npm test -- --watchAll=false` and `CI=true npm run build` from `frontend/`.
+- After deployment, use a sample PDF and two regular accounts to verify the second account cannot see the first account's documents or chats. Check guest limits and admin access separately.
 
-│   ChromaDB       │
-
-│   (Vector Store) │
-
-└──────────────────┘
-
-**Flow:**
-1. User uploads PDF → text extracted via `pypdf`
-2. Text chunked using LangChain's `RecursiveCharacterTextSplitter`
-3. Chunks embedded using Gemini embeddings → stored in ChromaDB
-4. On question: semantic search retrieves top-3 chunks
-5. LLM generates answer grounded in retrieved context with source attribution
-
----
-
-##  Tech Stack
-
-### Backend
-- **FastAPI** — Async Python web framework
-- **LangChain** — Document loaders, text splitters
-- **ChromaDB** — Persistent vector database
-- **Google Gemini API** — Embeddings + LLM (Flash / Flash-Lite)
-- **pypdf** — PDF text extraction
-
-### Frontend
-- **React 19** — UI framework
-- **Tailwind CSS** — Styling
-- **Framer Motion** — Animations
-- **Axios** — HTTP client
-- **Web Speech API** — Voice input
-
-### DevOps
-- **Vercel** — Frontend hosting (auto-deploy on push)
-- **Render** — Backend hosting
-- **GitHub Actions** — CI/CD
-
----
-
-##  Local Setup
-
-### Prerequisites
-- Python 3.10+
-- Node.js 18+
-- Google Gemini API key ([get one here](https://aistudio.google.com/apikey))
-
-### Backend
-```bash
-cd backend
-python -m venv venv
-venv\Scripts\activate     # Windows
-pip install -r requirements.txt
-
-# Create .env file
-echo GEMINI_API_KEY=your_key_here > .env
-
-uvicorn main:app --reload
-```
-
-Backend runs on '(https://docmind-12ms.onrender.com/)'.
-
-### Frontend
-```bash
-cd frontend
-npm install
-npm start
-```
-
-Frontend runs on `(https://docmind-mocha.vercel.app/)`.
-
----
-
-## API Endpoints
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET`  | `/` | Health check |
-| `POST` | `/upload-pdf` | Upload PDF(s), extract + embed + store |
-| `POST` | `/ask` | Query the document store with a question (supports `history` for multi-turn) |
-| `POST` | `/ask-stream` | Same as `/ask` but streams the answer in real time (SSE) |
-| `POST` | `/generate-title` | Generate a short AI title for a chat |
-
-**Example request:**
-```bash
-curl -X POST https://docmind-12ms.onrender.com/ask \
-  -H "Content-Type: application/json" \
-  -d '{"question": "Summarize the document", "model": "gemini-2.5-flash-lite"}'
-```
-
----
-
-## Roadmap
-
-- [ ] JWT authentication + per-user data isolation
-- [x] Streaming responses (Server-Sent Events)
-- [x] Conversation memory (multi-turn context)
-- [ ] Page-level citations with PDF highlighting
-- [ ] Background async indexing for large PDFs (Celery + Redis)
-- [ ] Migrate to Pinecone for production-grade vector search
-- [ ] Mobile-responsive UI
-- [ ] OCR support for scanned PDFs
-- [ ] Document comparison across PDFs
-
----
-
-## 📂 Project Structure
-
-docmind/
-
-├── backend/
-
-│   ├── main.py              # FastAPI app + RAG pipeline
-
-│   ├── requirements.txt
-
-│   ├── chroma_db/           # ChromaDB persistence
-
-│   └── uploads/             # Uploaded PDFs
-
-├── frontend/
-
-│   ├── src/
-
-│   │   ├── App.js           # Main React component
-
-│   │   ├── components/
-
-│   │   │   └── MouseOrb.jsx # Iridescent cursor
-
-│   │   └── index.css        # Tailwind + custom CSS
-
-│   ├── tailwind.config.js
-
-│   └── package.json
-
-└── README.md
-
----
-
-##  Author
-
-**Sai Teja Golla**
--  LinkedIn: [@golla-saiteja](https://www.linkedin.com/in/golla-saiteja)
--  GitHub: [@iamsaiteja](https://github.com/iamsaiteja)
--  tejayadav872@gmail.com
-
----
-
-##  License
-
-MIT License — feel free to learn from this and build your own version.
-
----
-
- If you found this useful, give it a star!
-
+Author: Sai Teja Golla · [GitHub](https://github.com/iamsaiteja) · [LinkedIn](https://www.linkedin.com/in/golla-saiteja)
