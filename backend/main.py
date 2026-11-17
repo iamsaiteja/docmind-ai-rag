@@ -4,29 +4,49 @@ import json
 import logging
 import os
 import secrets
+import sqlite3
 from functools import lru_cache
 from pathlib import PurePosixPath
 from threading import Lock
 from typing import Literal
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 from pypdf import PdfReader
 
 from accounts import add_routes, limit_questions, limit_uploads, plan_limits, require_account, require_session
+from request_limits import RequestLimits
 
 load_dotenv()
 logger = logging.getLogger(__name__)
 MAX_FILE_BYTES = 10 * 1024 * 1024
 index_lock = Lock()
+collection_init_lock = Lock()
 ALLOWED_MODELS = {'gemini-2.5-flash', 'gemini-2.5-flash-lite'}
 app = FastAPI(title='DocMind document assistant')
+app.add_middleware(RequestLimits)
 app.add_middleware(CORSMiddleware,
     allow_origins=os.getenv('CORS_ORIGINS', 'http://localhost:3000,https://docmind-mocha.vercel.app').split(','),
     allow_credentials=False, allow_methods=['GET', 'POST'],
     allow_headers=['Authorization', 'Content-Type'])
+
+
+@app.exception_handler(RequestValidationError)
+async def invalid_request(request, error):
+    return JSONResponse({'detail': 'Check the submitted fields and try again.'}, status_code=422)
+
+
+@app.exception_handler(sqlite3.OperationalError)
+async def database_error(request, error):
+    code = getattr(error, 'sqlite_errorcode', 0) & 0xff
+    if code in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED):
+        return JSONResponse({'detail': 'DocMind is busy. Please try again in a few seconds.'},
+                            status_code=503, headers={'Retry-After': '5'})
+    logger.error('Account database operation failed (SQLite code %s)', code)
+    return JSONResponse({'detail': 'The account database is unavailable. Please try again.'}, status_code=500)
 
 
 class ChatMessage(BaseModel):
@@ -46,21 +66,29 @@ class TitleRequest(BaseModel):
 add_routes(app)
 
 
-@lru_cache
 def get_collection():
+    with collection_init_lock:
+        return load_collection()
+
+
+@lru_cache
+def load_collection():
     import chromadb
     return chromadb.PersistentClient(path=os.getenv('CHROMA_PATH', 'chroma_db')).get_or_create_collection('account_documents_v1')
 
 @lru_cache
 def get_embeddings():
     from langchain_google_genai import GoogleGenerativeAIEmbeddings
-    return GoogleGenerativeAIEmbeddings(model='models/gemini-embedding-001', google_api_key=os.getenv('GEMINI_API_KEY'))
+    return GoogleGenerativeAIEmbeddings(model='models/gemini-embedding-001',
+                                      google_api_key=os.getenv('GEMINI_API_KEY'),
+                                      client_args={'timeout': 15})
 
 
 def generate(prompt, model, stream=False):
     import google.generativeai as genai
     genai.configure(api_key=os.environ['GEMINI_API_KEY'])
-    return genai.GenerativeModel(model).generate_content(prompt, stream=stream)
+    return genai.GenerativeModel(model).generate_content(
+        prompt, stream=stream, request_options={'timeout': 35, 'retry': None})
 
 
 def extract_chunks(data, filename):
@@ -129,8 +157,8 @@ def upload_pdf(files: list[UploadFile] = File(...), session=Depends(require_acco
                 metadatas=[dict(meta, owner=owner) for _, meta in chunks])
     except HTTPException:
         raise
-    except Exception:
-        logger.exception('Document indexing failed')
+    except Exception as error:
+        logger.warning('Document indexing failed (%s)', type(error).__name__)
         raise HTTPException(502, 'Document indexing failed. Please retry.')
     return {'message': 'PDFs indexed privately for your account', 'files': uploaded}
 
@@ -172,8 +200,8 @@ def context_for(request, session):
                       'A library card is free and available at the front desk.')
             return sample, [{'source': 'Sample library guide', 'page': 1, 'snippet': sample}]
         return retrieve_context(request.question, session['owner'])
-    except Exception:
-        logger.exception('Document retrieval failed')
+    except Exception as error:
+        logger.warning('Document retrieval failed (%s)', type(error).__name__)
         raise HTTPException(502, 'Document retrieval failed. Please retry.')
 
 
@@ -187,8 +215,8 @@ def ask(request: QuestionRequest, session=Depends(require_session)):
         model = request.model if session['user_id'] and request.model in ALLOWED_MODELS else 'gemini-2.5-flash-lite'
         result = generate(build_prompt(request.question, context, request.history), model)
         return {'question': request.question, 'answer': result.text, 'sources': sources}
-    except Exception:
-        logger.exception('Answer generation failed')
+    except Exception as error:
+        logger.warning('Answer generation failed (%s)', type(error).__name__)
         raise HTTPException(502, 'Answer generation failed. Please retry.')
 
 
@@ -208,8 +236,8 @@ def ask_stream(request: QuestionRequest, session=Depends(require_session)):
                 for chunk in generate(build_prompt(request.question, context, request.history), model, stream=True):
                     if chunk.text:
                         yield event({'type': 'delta', 'text': chunk.text})
-            except Exception:
-                logger.exception('Streaming failed')
+            except Exception as error:
+                logger.warning('Streaming failed (%s)', type(error).__name__)
                 yield event({'type': 'error', 'message': 'Answer generation failed. Please retry.'})
                 return
         yield event({'type': 'done'})

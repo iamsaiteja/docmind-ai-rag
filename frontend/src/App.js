@@ -26,6 +26,7 @@ const STRINGS = {
     slowReply: "Waiting for the server…",
     replyTimeout: "The reply timed out. Try again.",
     replyFailed: "The reply was interrupted. Try again.",
+    replyBusy: "DocMind is busy. Try again in a few seconds.",
     greeting: "Hi! Upload a PDF or ask me a question.",
     summarize: "Summarize this document", explainEli5: "Explain like I'm 5",
     listKeyPoints: "List the key points",
@@ -53,6 +54,7 @@ const STRINGS = {
     slowReply: "Server reply kosam wait chesthunna…",
     replyTimeout: "Reply ki time aipoyindi. Malli try cheyyi.",
     replyFailed: "Reply madhyalo aagipoyindi. Malli try cheyyi.",
+    replyBusy: "DocMind busy ga undi. Konni seconds tarvata malli try cheyyi.",
     greeting: "Hi! PDF upload cheyyi leda oka question adugu.",
     summarize: "Ee document summarize chey", explainEli5: "5 years pillodiki cheppinattu cheppu",
     listKeyPoints: "Mukhya points list chey",
@@ -80,6 +82,7 @@ const STRINGS = {
     slowReply: "Server ke jawab ka intezar hai…",
     replyTimeout: "Jawab ka samay khatam ho gaya. Phir try karein.",
     replyFailed: "Jawab beech mein ruk gaya. Phir try karein.",
+    replyBusy: "DocMind busy hai. Kuch seconds baad phir try karein.",
     greeting: "Hi! PDF upload karein ya koi sawal poochhein.",
     summarize: "Is document ko summarize karo", explainEli5: "5 saal ke bachche ko samjhao",
     listKeyPoints: "Mukhya points list karo",
@@ -413,6 +416,7 @@ export default function App({ token, api, workspace, onExit, leaving, onPlans, o
       if (timedOut || !controller.signal.aborted) {
         const detail = String(e.response?.status || e.message);
         const content = timedOut ? t.replyTimeout
+          : /503|busy/i.test(detail) ? t.replyBusy
           : /429|quota/i.test(detail) ? t.rateLimit : t.replyFailed;
         final.push({ role: "assistant", content, sources: [], isError: true });
       }

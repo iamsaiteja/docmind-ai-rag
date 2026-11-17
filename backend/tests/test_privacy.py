@@ -1,3 +1,6 @@
+from concurrent.futures import ThreadPoolExecutor
+from threading import Barrier, Event
+
 import pytest
 from fastapi.testclient import TestClient
 import main
@@ -24,6 +27,69 @@ def test_missing_and_forged_session_are_rejected(client):
     assert client.post('/ask', json={'question': 'Hello'}).status_code == 401
     token = client.post('/sessions').json()['token']
     assert client.post('/ask', json={'question': 'Hello'}, headers={'Authorization': 'Bearer ' + token + 'x'}).status_code == 401
+
+
+def test_concurrent_logins_keep_chat_histories_separate(client):
+    emails = [f'user-{i}@example.com' for i in range(8)]
+    registered = [account(client, email) for email in emails]
+    start = Barrier(len(emails))
+    saved = Barrier(len(emails))
+
+    def use_workspace(email):
+        start.wait(timeout=10)
+        auth = {'Authorization': 'Bearer ' + account(client, email, route='login')['token']}
+        snapshot = {'revision': 0, 'chats': [{'id': 'same-chat-id', 'title': email, 'messages': []}]}
+        assert client.post('/chats', headers=auth, json=snapshot).status_code == 200
+        saved.wait(timeout=15)
+        result = client.get('/chats', headers=auth)
+        assert result.json() == {'revision': 1, 'chats': snapshot['chats']}
+        assert result.headers['Cache-Control'] == 'no-store'
+        assert client.post('/auth/logout', headers=auth).status_code == 200
+        assert client.get('/chats', headers=auth).status_code == 401
+
+    with ThreadPoolExecutor(max_workers=len(emails)) as pool:
+        list(pool.map(use_workspace, emails))
+    for email, user in zip(emails, registered):
+        auth = {'Authorization': 'Bearer ' + user['token']}
+        assert client.get('/auth/me', headers=auth).json()['email'] == email
+
+
+def test_inflight_streams_leave_capacity_for_login(client, monkeypatch):
+    start = Barrier(5)
+    release = Event()
+    guest = {'Authorization': 'Bearer ' + client.post('/sessions').json()['token']}
+    account(client)
+
+    def generate(*args, **kwargs):
+        start.wait(timeout=10)
+        assert release.wait(timeout=15)
+        yield type('Answer', (), {'text': 'Sample answer'})()
+
+    monkeypatch.setattr(main, 'generate', generate)
+    question = {'question': 'When does the library open?'}
+
+    with ThreadPoolExecutor(max_workers=4) as pool:
+        streams = [pool.submit(client.post, '/ask-stream', headers=guest, json=question) for _ in range(4)]
+        try:
+            start.wait(timeout=10)
+            rejected = client.post('/ask', headers=guest, json=question)
+            assert rejected.status_code == 503
+            assert rejected.headers['Retry-After'] == '5'
+            assert account(client, route='login')['profile']['role'] == 'user'
+        finally:
+            release.set()
+        for stream in streams:
+            assert 'Sample answer' in stream.result(timeout=5).text
+
+    monkeypatch.setattr(main, 'generate', lambda *a, **k: type('Answer', (), {'text': 'Sample answer'})())
+    assert client.post('/ask', headers=guest, json=question).status_code == 200
+
+
+def test_invalid_credentials_are_not_echoed(client):
+    response = client.post('/auth/login', json={'email': 'user@example.com', 'password': 'secret'})
+    assert response.status_code == 422
+    assert 'secret' not in response.text
+    assert response.headers['Cache-Control'] == 'no-store'
 
 def test_invalid_pdf_and_oversized_upload(client, monkeypatch):
     auth = headers(client)

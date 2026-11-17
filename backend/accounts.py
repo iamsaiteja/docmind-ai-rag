@@ -9,10 +9,14 @@ import sqlite3
 import time
 from contextlib import contextmanager
 from pathlib import Path
+from threading import Lock
 
 from fastapi import Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
 
+
+_schema_lock = Lock()
+_initialized_databases = set()
 
 PLAN_DAYS = 30
 PLANS = {
@@ -31,13 +35,13 @@ class ChatSnapshot(BaseModel):
     chats: list[dict] = Field(max_length=200)
 
 
-@contextmanager
-def database():
-    path = Path(os.getenv('DOCMIND_DB_PATH', 'docmind.sqlite3'))
-    path.parent.mkdir(parents=True, exist_ok=True)
-    db = sqlite3.connect(path, timeout=10)
-    db.row_factory = sqlite3.Row
-    try:
+def initialize_database(db, path):
+    if path in _initialized_databases:
+        return
+    with _schema_lock:
+        if path in _initialized_databases:
+            return
+        db.execute('PRAGMA journal_mode=WAL').fetchone()
         db.executescript("""
             CREATE TABLE IF NOT EXISTS users (
                 id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL,
@@ -66,6 +70,17 @@ def database():
                 name TEXT PRIMARY KEY, count INTEGER NOT NULL
             );
         """)
+        _initialized_databases.add(path)
+
+
+@contextmanager
+def database():
+    path = Path(os.getenv('DOCMIND_DB_PATH', 'docmind.sqlite3')).resolve()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    db = sqlite3.connect(path, timeout=3)
+    db.row_factory = sqlite3.Row
+    try:
+        initialize_database(db, path)
         with db:
             yield db
     finally:
@@ -120,14 +135,15 @@ def require_session(authorization: str = Header(default='')):
     now = int(time.time())
     with database() as db:
         session = db.execute("""
-            SELECT s.*, u.id, u.email, u.is_admin, p.paid_until, p.requested_at FROM sessions s
+            SELECT s.*, u.id, u.email, u.is_admin, u.last_seen, p.paid_until, p.requested_at
+            FROM sessions s
             LEFT JOIN users u ON s.user_id=u.id
             LEFT JOIN subscriptions p ON p.user_id=u.id
             WHERE token_hash=? AND expires_at>?
         """, (digest, now)).fetchone()
         if session is None:
             raise HTTPException(401, 'Session ended. Please sign in again.')
-        if session['user_id']:
+        if session['user_id'] and session['last_seen'] < now - 60:
             db.execute('UPDATE users SET last_seen=? WHERE id=? AND last_seen<?',
                        (now, session['user_id'], now - 60))
     return session
@@ -199,11 +215,12 @@ def add_routes(app):
         with database() as db:
             consume(db, [(f'register:{client_scope(request)}', 8), ('register', 200)])
         salt = secrets.token_hex(16)
+        digest = password_hash(credentials.password, salt)
         uid, now = secrets.token_hex(16), int(time.time())
         with database() as db:
             try:
                 db.execute('INSERT INTO users VALUES (?, ?, ?, ?, 0, ?, ?)',
-                           (uid, email, salt, password_hash(credentials.password, salt), now, now))
+                           (uid, email, salt, digest, now, now))
             except sqlite3.IntegrityError:
                 raise HTTPException(409, 'That email is already registered.')
             return start_session(db, db.execute('SELECT * FROM users WHERE id=?', (uid,)).fetchone())

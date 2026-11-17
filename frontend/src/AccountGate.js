@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import axios from "axios";
-import { API, authenticatedApi } from "./apiClient";
+import { API, API_TIMEOUT, authenticatedApi } from "./apiClient";
 import App from "./App";
 import PlansDialog from "./PlansDialog";
 
@@ -10,6 +10,7 @@ const button = "rounded-lg border border-white/20 px-3 py-2 text-sm hover:bg-whi
 const field = "w-full rounded-lg border border-white/20 bg-black/30 p-3 text-white";
 
 export function errorMessage(error) {
+  if (["ECONNABORTED", "ETIMEDOUT"].includes(error.code)) return "DocMind took too long to respond. Please try again.";
   const detail = error.response?.data?.detail;
   return typeof detail === "string" ? detail : "Request failed. Check your details or try again.";
 }
@@ -114,7 +115,7 @@ export default function AccountGate() {
     setBusy(true);
     setError("");
     try {
-      const { data } = await axios.post(`${API}${endpoint}`, body);
+      const { data } = await axios.post(`${API}${endpoint}`, body, { timeout: API_TIMEOUT });
       sessionStorage.setItem(TOKEN_KEY, data.token);
       setToken(data.token);
     } catch (err) {
