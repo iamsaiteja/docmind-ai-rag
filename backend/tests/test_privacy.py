@@ -155,7 +155,7 @@ def test_real_chroma_collection_enforces_session_filter(client, monkeypatch, tmp
     monkeypatch.setattr(main, 'get_collection', lambda: collection)
     monkeypatch.setattr(main, 'get_embeddings', lambda: type('Embed', (), {'embed_query': lambda self,q: [1.0,0.0]})())
     context, sources = main.retrieve_context('Q', owner)
-    assert context == 'only session one' and sources[0]['page'] == 1
+    assert context == '[a.pdf, page 1]\nonly session one' and sources[0]['page'] == 1
     other = client.get('/auth/me', headers=second).json()['id']
     assert main.retrieve_context('Q', other) == ('', [])
 

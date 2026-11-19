@@ -26,6 +26,39 @@ def test_file_overview_uses_first_pages_and_preserves_owner_filter(monkeypatch):
         assert sources[0]['page'] == 1
 
 
+def test_long_overview_considers_final_pages(monkeypatch):
+    class Store:
+        def get(self, where, include):
+            assert where == {'owner': 'mine'}
+            metadata = [{'source': 'notice.pdf', 'page': page} for page in range(1, 41)]
+            return {'metadatas': metadata, 'documents': [f'Page {i}' for i in range(1, 41)]}
+
+    monkeypatch.setattr(main, 'get_collection', lambda: Store())
+    _, sources = main.retrieve_context('Summarize the document', 'mine')
+    assert len(sources) == 16
+    assert sources[0]['page'] == 1 and sources[-1]['page'] == 40
+
+
+def test_detailed_question_keeps_selected_file_and_retrieves_more_evidence(monkeypatch):
+    class Store:
+        def get(self, where, include):
+            if include:
+                return {'metadatas': [{'source': 'notice.pdf'}, {'source': 'other.pdf'}]}
+            return {'ids': list(range(18))}
+
+        def query(self, **kwargs):
+            assert kwargs['where'] == {'$and': [{'owner': 'mine'}, {'source': 'notice.pdf'}]}
+            assert kwargs['n_results'] == 12
+            return {'documents': [['Deadline is 12 June.']],
+                    'metadatas': [[{'source': 'notice.pdf', 'page': 5}]]}
+
+    monkeypatch.setattr(main, 'get_collection', lambda: Store())
+    monkeypatch.setattr(main, 'get_embeddings', lambda: type('Embed', (), {'embed_query': lambda self, q: [.1]})())
+    context, sources = main.retrieve_context('Explain the deadline in this PDF in detail', 'mine', document='notice.pdf')
+    assert context == '[notice.pdf, page 5]\nDeadline is 12 June.'
+    assert sources[0]['source'] == 'notice.pdf'
+
+
 def test_png_is_described_and_indexed_for_current_user(client, monkeypatch):
     captured = {}
 
