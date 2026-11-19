@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import axios from "axios";
 import { API, API_TIMEOUT, authenticatedApi } from "./apiClient";
 import App from "./App";
@@ -9,6 +9,10 @@ const freeHostingNotice = "Free hosting uses temporary storage. A server restart
 const button = "rounded-lg border border-white/20 px-3 py-2 text-sm hover:bg-white/10 disabled:opacity-50";
 const field = "mt-1 w-full rounded-xl border border-rose-200 bg-white px-3 py-2.5 text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/20";
 const action = "min-h-11 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors disabled:cursor-wait disabled:opacity-65";
+const FirebaseSignIn = lazy(() => import("./FirebaseSignIn"));
+const firebaseConfigured = Boolean(process.env.REACT_APP_FIREBASE_API_KEY &&
+  process.env.REACT_APP_FIREBASE_AUTH_DOMAIN && process.env.REACT_APP_FIREBASE_PROJECT_ID &&
+  process.env.REACT_APP_FIREBASE_APP_ID);
 
 export function errorMessage(error) {
   if (["ECONNABORTED", "ETIMEDOUT"].includes(error.code)) return "DocMind took too long to respond. Please try again.";
@@ -56,7 +60,7 @@ function AdminUsers({ api, close }) {
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead><tr>{["Email", "Role", "Joined", "Last active", "Plan"].map((label) => <th className="p-2" key={label}>{label}</th>)}</tr></thead>
-            <tbody>{data.users.map((user) => <tr className="border-t border-white/10" key={user.email}>
+            <tbody>{data.users.map((user) => <tr className="border-t border-white/10" key={user.id}>
               <td className="p-2">{user.email}</td><td className="p-2">{user.is_admin ? "Admin" : "User"}</td>
               <td className="p-2">{date(user.created_at)}</td><td className="p-2">{date(user.last_seen)}</td>
               <td className="p-2">{user.plan.tier === "pro" ? `Pro until ${date(user.plan.paid_until)}`
@@ -141,19 +145,28 @@ export default function AccountGate() {
     return () => controller.abort();
   }, [api, initialProfile]);
 
+  function startWorkspace(data) {
+    sessionStorage.setItem(TOKEN_KEY, data.token);
+    setSession({ token: data.token, profile: data.profile });
+  }
+
   async function enter(endpoint, body) {
     if (pending) return;
     setPending(endpoint);
     setError("");
     try {
       const { data } = await axios.post(`${API}${endpoint}`, body, { timeout: API_TIMEOUT });
-      sessionStorage.setItem(TOKEN_KEY, data.token);
-      setSession({ token: data.token, profile: data.profile });
+      startWorkspace(data);
     } catch (err) {
       setError(errorMessage(err));
     } finally {
       setPending("");
     }
+  }
+
+  async function enterFirebase(idToken) {
+    const { data } = await axios.post(`${API}/auth/firebase`, { id_token: idToken }, { timeout: API_TIMEOUT });
+    startWorkspace(data);
   }
 
   async function leave() {
@@ -207,6 +220,10 @@ export default function AccountGate() {
                 : (pending === "/auth/register" ? "Creating account…" : "Create account")}
             </button>
           </form>
+          {firebaseConfigured && <Suspense fallback={null}>
+            <FirebaseSignIn pending={pending} setPending={setPending} clearError={() => setError("")}
+              exchange={enterFirebase} apiError={errorMessage} actionClass={action} />
+          </Suspense>}
           <button type="button" className={`${action} mt-3 w-full border border-rose-300 bg-rose-50 text-rose-900 enabled:hover:bg-rose-100`}
             disabled={Boolean(pending)} onClick={() => enter("/sessions")}>
             {pending === "/sessions" ? "Starting guest session…" : "Continue as guest"}

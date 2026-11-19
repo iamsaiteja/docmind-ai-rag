@@ -38,6 +38,14 @@ In the running backend shell, from the directory containing `accounts.py`, run `
 
 The current beta uses email addresses supplied during registration. Email verification and self-service password recovery are future work. The API enforces daily quotas for guest starts, authentication, questions, and upload requests. Configure provider quotas and gateway request-size limits before broad rollout. Counts start with the new deployment's database.
 
+## Google sign-in
+
+1. Create or select a Firebase project, register a web app, enable **Google** in Firebase Authentication, and add the frontend hostname under **Authorized domains**. For the public demo, use `docmind-mocha.vercel.app`.
+2. Set `DOCMIND_FIREBASE_PROJECT_ID` on the API. Copy the Firebase web app's API key, auth domain, project ID, and app ID into the matching `REACT_APP_FIREBASE_*` frontend variables shown in `frontend/.env.example`. The project IDs must match. The API verifies tokens against Firebase public signing keys.
+3. Deploy the API first, then rebuild and deploy the frontend. Verify Google sign-in, sign-out, and workspace isolation on the authorized HTTPS domain.
+
+Google sign-in creates or reopens a workspace by verified Firebase identity. Existing email/password accounts continue to use their original login. Google sign-in rejects a matching email until an explicit account-linking flow is available.
+
 ## Validation
 
 - Backend. Run `python -m pytest -q` from `backend/` with pytest and httpx installed. Isolation tests use a temporary database and mock Gemini.
