@@ -59,6 +59,21 @@ def test_detailed_question_keeps_selected_file_and_retrieves_more_evidence(monke
     assert sources[0]['source'] == 'notice.pdf'
 
 
+def test_mixed_language_question_uses_explicit_roman_telugu_system_instruction(client, monkeypatch):
+    def answer(prompt, model, system_instruction):
+        assert 'Required output language: Roman Telugu' in system_instruction
+        assert 'Deadline is 12 June.' in prompt
+        return type('Answer', (), {'text': 'June 12 lopu submit cheyyi.'})()
+
+    monkeypatch.setattr(main, 'retrieve_context', lambda *args: ('Deadline is 12 June.', []))
+    monkeypatch.setattr(main, 'generate', answer)
+    response = client.post('/ask', headers=headers(client), json={
+        'question': 'Summarize the file. Telugu English letters lo cheppu.',
+    })
+    assert response.status_code == 200
+    assert 'submit cheyyi' in response.json()['answer']
+
+
 def test_png_is_described_and_indexed_for_current_user(client, monkeypatch):
     captured = {}
 
