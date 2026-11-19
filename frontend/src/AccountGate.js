@@ -7,7 +7,8 @@ import PlansDialog from "./PlansDialog";
 const TOKEN_KEY = "docmind-account-token";
 const freeHostingNotice = "Free hosting uses temporary storage. A server restart clears accounts, saved chats, and uploaded documents.";
 const button = "rounded-lg border border-white/20 px-3 py-2 text-sm hover:bg-white/10 disabled:opacity-50";
-const field = "w-full rounded-lg border border-white/20 bg-black/30 p-3 text-white";
+const field = "mt-1 w-full rounded-xl border border-rose-200 bg-white px-3 py-2.5 text-ink outline-none focus:border-brand focus:ring-2 focus:ring-brand/20";
+const action = "min-h-11 rounded-xl px-4 py-2.5 text-sm font-semibold transition-colors disabled:cursor-wait disabled:opacity-65";
 
 export function errorMessage(error) {
   if (["ECONNABORTED", "ETIMEDOUT"].includes(error.code)) return "DocMind took too long to respond. Please try again.";
@@ -75,23 +76,52 @@ function AdminUsers({ api, close }) {
 }
 
 export default function AccountGate() {
-  const [token, setToken] = useState(() => sessionStorage.getItem(TOKEN_KEY));
+  const [session, setSession] = useState(() => {
+    const token = sessionStorage.getItem(TOKEN_KEY);
+    return token ? { token } : null;
+  });
   const [workspace, setWorkspace] = useState(null);
   const [mode, setMode] = useState("login");
-  const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState("");
+  const [slow, setSlow] = useState(false);
   const [admin, setAdmin] = useState(false);
   const [showPlans, setShowPlans] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [error, setError] = useState("");
+  const token = session?.token;
+  const initialProfile = session?.profile;
   const api = useMemo(() => token ? authenticatedApi(token) : null, [token]);
+  const opening = Boolean(token && !workspace);
+  const waiting = Boolean(pending || opening);
+
+  useEffect(() => {
+    if (sessionStorage.getItem(TOKEN_KEY)) return;
+    const controller = new AbortController();
+    // Wake the free backend while the visitor reads the form or enters credentials.
+    fetch(`${API}/`, { signal: controller.signal }).catch(() => {});
+    return () => controller.abort();
+  }, []);
+
+  useEffect(() => {
+    if (!waiting) {
+      setSlow(false);
+      return;
+    }
+    const timeout = setTimeout(() => setSlow(true), 4000);
+    return () => clearTimeout(timeout);
+  }, [waiting]);
 
   useEffect(() => {
     if (!api) return;
+    if (initialProfile?.role === "guest") {
+      setWorkspace({ profile: initialProfile, chats: [], files: [], revision: 0 });
+      return;
+    }
     const controller = new AbortController();
     const options = { signal: controller.signal };
     async function load() {
       try {
-        const { data: profile } = await api.get("/auth/me", options);
+        const profile = initialProfile ?? (await api.get("/auth/me", options)).data;
         if (profile.role === "guest") {
           if (!controller.signal.aborted) setWorkspace({ profile, chats: [], files: [], revision: 0 });
           return;
@@ -104,24 +134,25 @@ export default function AccountGate() {
         if (controller.signal.aborted) return;
         setError(errorMessage(err));
         sessionStorage.removeItem(TOKEN_KEY);
-        setToken(null);
+        setSession(null);
       }
     }
     load();
     return () => controller.abort();
-  }, [api]);
+  }, [api, initialProfile]);
 
   async function enter(endpoint, body) {
-    setBusy(true);
+    if (pending) return;
+    setPending(endpoint);
     setError("");
     try {
       const { data } = await axios.post(`${API}${endpoint}`, body, { timeout: API_TIMEOUT });
       sessionStorage.setItem(TOKEN_KEY, data.token);
-      setToken(data.token);
+      setSession({ token: data.token, profile: data.profile });
     } catch (err) {
       setError(errorMessage(err));
     } finally {
-      setBusy(false);
+      setPending("");
     }
   }
 
@@ -137,7 +168,7 @@ export default function AccountGate() {
       setWorkspace(null);
       setMode("login");
       setAdmin(false);
-      setToken(null);
+      setSession(null);
       setLeaving(false);
     }
   }
@@ -154,32 +185,43 @@ export default function AccountGate() {
     {plansDialog}
   </>;
   return (
-    <main className="grid min-h-screen place-items-center bg-[#0b0a0d] p-4 text-white">
-      <section className="w-full max-w-md rounded-2xl border border-white/15 bg-white/5 p-6">
-        <h1 className="mb-4 text-3xl font-bold">DocMind</h1>
-        <p className="mb-4 rounded-lg border border-white/15 p-3 text-sm text-white/80">{freeHostingNotice}</p>
-        {token ? <p>Opening your workspace…</p> : <>
-          <form className="space-y-3" onSubmit={(event) => {
+    <main className="grid min-h-screen place-items-center bg-page px-4 py-8 text-ink">
+      <section className="w-full max-w-md rounded-3xl border border-rose-200/80 bg-paper p-6 shadow-xl shadow-rose-900/10 sm:p-8">
+        <div className="mb-6 flex items-center gap-3">
+          <span aria-hidden="true" className="grid h-11 w-11 place-items-center rounded-xl bg-brand text-xl font-bold text-white">D</span>
+          <h1 className="text-2xl font-bold tracking-tight">DocMind by Saiteja</h1>
+        </div>
+        {opening ? <p role="status">Opening your workspace…</p> : <>
+          <h2 className="mb-4 text-lg font-semibold">{mode === "login" ? "Sign in to DocMind" : "Create your account"}</h2>
+          <form aria-busy={Boolean(pending)} className="space-y-4" onSubmit={(event) => {
             event.preventDefault();
             const data = new FormData(event.currentTarget);
             enter(`/auth/${mode}`, { email: data.get("email"), password: data.get("password") });
           }}>
-            <label className="block">Email<input name="email" type="email" autoComplete="email" required maxLength={254} className={field} /></label>
-            <label className="block">Password<input key={mode} name="password" type="password" required minLength={12} maxLength={128}
+            <label className="block text-sm font-medium">Email<input name="email" type="email" autoComplete="email" required maxLength={254} className={field} /></label>
+            <label className="block text-sm font-medium">Password<input key={mode} name="password" type="password" required minLength={12} maxLength={128}
               autoComplete={mode === "login" ? "current-password" : "new-password"} className={field} /></label>
-            {mode === "register" && <p className="text-sm text-white/70">Use at least 12 characters.</p>}
-            <button className={button} disabled={busy}>{mode === "login" ? "Sign in" : "Create account"}</button>
+            {mode === "register" && <p className="text-sm text-ink/75">Use at least 12 characters.</p>}
+            <button type="submit" className={`${action} w-full bg-brand text-white enabled:hover:bg-rose-800`} disabled={Boolean(pending)}>
+              {mode === "login" ? (pending === "/auth/login" ? "Signing in…" : "Sign in")
+                : (pending === "/auth/register" ? "Creating account…" : "Create account")}
+            </button>
           </form>
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button className={button} disabled={busy} onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}>
+          <button type="button" className={`${action} mt-3 w-full border border-rose-300 bg-rose-50 text-rose-900 enabled:hover:bg-rose-100`}
+            disabled={Boolean(pending)} onClick={() => enter("/sessions")}>
+            {pending === "/sessions" ? "Starting guest session…" : "Continue as guest"}
+          </button>
+          <p className="mt-2 text-sm text-ink/75">Guests can ask five questions about the sample library guide. Sign in to upload PDFs and save chats privately.</p>
+          <div className="mt-4 flex flex-wrap justify-between gap-2 border-t border-rose-100 pt-3 text-sm font-semibold text-brand">
+            <button type="button" className="min-h-11 enabled:hover:underline disabled:opacity-65" disabled={Boolean(pending)} onClick={() => { setMode(mode === "login" ? "register" : "login"); setError(""); }}>
               {mode === "login" ? "Create an account" : "Back to sign in"}
             </button>
-            <button className={button} disabled={busy} onClick={() => enter("/sessions")}>Try as guest</button>
-            <button className={button} onClick={() => setShowPlans(true)}>View plans</button>
+            <button type="button" className="min-h-11 enabled:hover:underline disabled:opacity-65" disabled={Boolean(pending)} onClick={() => setShowPlans(true)}>View plans</button>
           </div>
-          <p className="mt-4 text-sm text-white/70">Guests can ask five questions about the sample library guide. Sign in to upload PDFs and save chats privately.</p>
         </>}
-        {error && <p className="mt-3 text-rose-300" role="alert">{error}</p>}
+        {waiting && slow && <p className="mt-3 text-sm text-ink/75" role="status">Still waiting for DocMind. The free server can take a moment to wake up.</p>}
+        {error && <p className="mt-3 rounded-lg bg-rose-50 p-3 text-sm text-rose-800" role="alert">{error}</p>}
+        <p className="mt-4 rounded-xl bg-rose-50 p-3 text-xs leading-relaxed text-ink/75">{freeHostingNotice}</p>
       </section>
       {plansDialog}
     </main>
