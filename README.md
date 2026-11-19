@@ -1,6 +1,6 @@
 # DocMind by Saiteja
 
-Upload a PDF, ask questions, and get streamed answers with page references. DocMind uses React, FastAPI, ChromaDB, and Gemini. [Current public demo](https://docmind-mocha.vercel.app/)
+Upload a PDF or image, ask questions, and get streamed answers with source references. DocMind uses React, FastAPI, ChromaDB, and Gemini. [Current public demo](https://docmind-mocha.vercel.app/)
 
 ## Access
 
@@ -12,7 +12,7 @@ Upload a PDF, ask questions, and get streamed answers with page references. DocM
 
 Chat and document access is scoped to the authenticated account on the backend. The admin endpoint returns account metadata and counts. Passwords are stored as salted PBKDF2 hashes, and sign-out revokes the current session. The browser stores the session token in tab storage and keeps chat content out of browser local storage.
 
-Uploaded PDFs are parsed in memory. The document index persists extracted text, embeddings, file names, and page numbers. Gemini receives text for embedding and matching excerpts and chat context for answer generation. Each PDF can contain up to 10 MiB, 100 pages, and 1,000 chunks. Upload counts depend on the account plan. Scanned and encrypted PDFs are outside the current workflow. Existing shared and anonymous indexes are excluded because their files cannot be mapped safely to signed-in accounts. Account owners should upload their source files again.
+Uploaded files are processed in memory. The index persists extracted text, image descriptions, embeddings, file names, and PDF page numbers. Gemini receives JPG, PNG, and WebP images and scanned PDF pages for visual extraction. It also receives text for embeddings and matching excerpts and chat context when generating an answer. Each file can be up to 10 MiB. A PDF can contain up to 100 pages, including at most 12 scanned pages, and up to 1,000 chunks. Encrypted PDFs are unsupported. Upload counts depend on the account plan. Existing shared and anonymous indexes are excluded because their files cannot be mapped safely to signed-in accounts. Account owners should upload their source files again.
 
 ## Plans
 

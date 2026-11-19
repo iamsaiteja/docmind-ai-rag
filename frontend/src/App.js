@@ -31,7 +31,7 @@ const STRINGS = {
     summarize: "Summarize this document", explainEli5: "Explain like I'm 5",
     listKeyPoints: "List the key points",
     sourcesLabel: "source", indexing: "Indexing…",
-    uploadPdf: "Upload PDF", voice: "Voice input",
+    uploadFile: "Upload PDF or image", voice: "Voice input",
     voiceNotSupported: "Voice not supported here (use Chrome)",
     rateLimit: "Rate limit reached — wait about a minute and try again.",
     uploadFailed: "Upload failed: ",
@@ -59,7 +59,7 @@ const STRINGS = {
     summarize: "Ee document summarize chey", explainEli5: "5 years pillodiki cheppinattu cheppu",
     listKeyPoints: "Mukhya points list chey",
     sourcesLabel: "source", indexing: "Indexing avtundi…",
-    uploadPdf: "PDF upload chey", voice: "Voice input",
+    uploadFile: "PDF leda image upload chey", voice: "Voice input",
     voiceNotSupported: "Voice support ledhu (Chrome vadu)",
     rateLimit: "Rate limit ayyindi — oka nimisham wait chesi try chey.",
     uploadFailed: "Upload fail ayyindi: ",
@@ -87,7 +87,7 @@ const STRINGS = {
     summarize: "Is document ko summarize karo", explainEli5: "5 saal ke bachche ko samjhao",
     listKeyPoints: "Mukhya points list karo",
     sourcesLabel: "source", indexing: "Indexing ho rahi hai…",
-    uploadPdf: "PDF upload karo", voice: "Voice input",
+    uploadFile: "PDF ya image upload karo", voice: "Voice input",
     voiceNotSupported: "Voice support nahi hai (Chrome use karo)",
     rateLimit: "Rate limit ho gayi — ek minute ruko aur try karo.",
     uploadFailed: "Upload fail: ",
@@ -130,6 +130,7 @@ export default function App({ token, api, workspace, onExit, leaving, onPlans, o
   const [slowReply, setSlowReply] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [attached, setAttached] = useState(workspace.files);
+  const [selectedFile, setSelectedFile] = useState(workspace.files.length === 1 ? workspace.files[0] : null);
   const [error, setError] = useState("");
   const [listening, setListening] = useState(false);
   const [chats, setChats] = useState(workspace.chats);
@@ -245,7 +246,10 @@ export default function App({ token, api, workspace, onExit, leaving, onPlans, o
     setChats((p) => p.map((c) => c.id === id ? { ...c, pinned: !c.pinned } : c));
   };
   const clearAll = () => { setChats([]); newChat(); setShowSettings(false); };
-  const removeAttached = (i) => setAttached((p) => p.filter((_, k) => k !== i));
+  const removeAttached = (name) => {
+    setAttached((files) => files.filter((file) => file !== name));
+    setSelectedFile((selected) => selected === name ? null : selected);
+  };
 
   // Export current chat as Markdown
   const exportCurrentChat = () => {
@@ -270,13 +274,15 @@ export default function App({ token, api, workspace, onExit, leaving, onPlans, o
   /* ── file upload ────────────────────────────────────── */
   const onPickFiles = async (e) => {
     const picked = Array.from(e.target.files); e.target.value = "";
-    if (!picked.length || guest) return;
+    if (!picked.length || guest || uploading || loading) return;
     setUploading(true); setError("");
     const fd = new FormData();
     picked.forEach((f) => fd.append("files", f));
     try {
       const res = await api.post("/upload-pdf", fd);
-      setAttached((p) => [...new Set([...p, ...(res.data.files || []).map((f) => f.filename)])]);
+      const files = (res.data.files || []).map((file) => file.filename);
+      setAttached((previous) => [...new Set([...previous, ...files])]);
+      setSelectedFile(files.length === 1 ? files[0] : null);
     } catch (err) {
       setError(t.uploadFailed + (err.response?.data?.detail || err.message));
     } finally {
@@ -288,11 +294,11 @@ export default function App({ token, api, workspace, onExit, leaving, onPlans, o
 
   // Real-time streaming via SSE (like ChatGPT). Throws "no-stream" if the
   // backend doesn't support it yet, so the caller can fall back to /ask.
-  const askStream = async (q, history, base, controller, onDelta) => {
+  const askStream = async (payload, base, controller, onDelta) => {
     const res = await fetch(`${API}/ask-stream`, {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-      body: JSON.stringify({ question: q, model, history: history.slice(-10) }),
+      body: JSON.stringify(payload),
       signal: controller.signal,
     });
     if ([404, 405, 501].includes(res.status)) throw new Error("no-stream");
@@ -347,7 +353,7 @@ export default function App({ token, api, workspace, onExit, leaving, onPlans, o
 
   const ask = async (preset, startMessages) => {
     const q = (preset ?? question).trim();
-    if (!q || loading || abortRef.current) return;
+    if (!q || uploading || loading || abortRef.current) return;
 
     // Light haptic on mobile
     if (navigator.vibrate) navigator.vibrate(8);
@@ -386,12 +392,13 @@ export default function App({ token, api, workspace, onExit, leaving, onPlans, o
     const history = start
       .filter((m) => !m.isError && m.content)
       .slice(-8)
-      .map((m) => ({ role: m.role, content: m.content }));
+      .map((m) => ({ role: m.role, content: m.content.slice(0, 12000) }));
+    const payload = { question: q, model, history, document: selectedFile };
 
     try {
       let final;
       try {
-        final = await askStream(q, history, base, controller, () => {
+        final = await askStream(payload, base, controller, () => {
           clearTimeout(slowTimer);
           setDeadline(STREAM_IDLE_TIMEOUT);
         });
@@ -399,7 +406,7 @@ export default function App({ token, api, workspace, onExit, leaving, onPlans, o
         if (e.message !== "no-stream") throw e;
         const { data } = await api.post(
           "/ask",
-          { question: q, model, history },
+          payload,
           { signal: controller.signal }
         );
         if (data.error || !data.answer?.trim()) throw new Error(data.error || "empty-reply");
@@ -515,7 +522,7 @@ export default function App({ token, api, workspace, onExit, leaving, onPlans, o
   return (
     <div className="flex h-[100dvh] bg-page text-ink font-sans antialiased relative overflow-hidden">
 
-      <input type="file" accept=".pdf" multiple hidden ref={fileRef} onChange={onPickFiles} />
+      <input type="file" accept=".pdf,.jpg,.jpeg,.png,.webp" multiple hidden ref={fileRef} onChange={onPickFiles} />
 
       {/* Mobile backdrop overlay */}
       {sidebarOpen && (
@@ -649,7 +656,7 @@ export default function App({ token, api, workspace, onExit, leaving, onPlans, o
         </header>
 
         {!guest && <p className="border-b border-ink/10 px-4 py-2 text-sm text-ink/80">{storageNotice}</p>}
-        {guest && <p className="px-4 py-2 text-sm text-ink/70">Guest demo · 5 questions about the sample library guide. Sign in to upload PDFs and save chats.</p>}
+        {guest && <p className="px-4 py-2 text-sm text-ink/70">Guest demo · 5 questions about the sample library guide. Sign in to upload PDFs or images and save chats.</p>}
         {saveError && <p className="px-4 py-2 text-sm text-rose-300" role="alert">
           {typeof saveError === "string" ? saveError : "Chat save failed."}{" "}
           <button className="underline" onClick={reload}>Reload saved history</button>
@@ -663,10 +670,10 @@ export default function App({ token, api, workspace, onExit, leaving, onPlans, o
               <div className="flex flex-col items-center justify-center text-center mt-16 md:mt-24 px-4">
                 <div className="w-14 h-14 rounded-2xl glossy-icon flex items-center justify-center text-ink text-2xl font-bold mb-5">D</div>
                 <h1 className="text-2xl md:text-4xl font-semibold tracking-tight shimmer-text">{t.howCanIHelp}</h1>
-                <p className="text-ink/70 mt-2 text-sm">{guest ? "Try a question about the sample library guide." : "Upload a PDF to ask questions about it."}</p>
+                <p className="text-ink/70 mt-2 text-sm">{guest ? "Try a question about the sample library guide." : "Upload a PDF or image to ask questions about it."}</p>
                 {!guest && <button onClick={() => fileRef.current?.click()} disabled={uploading}
                   className="glossy-btn mt-5 rounded-xl px-5 py-2.5 text-sm font-semibold">
-                  {t.uploadPdf}
+                  {t.uploadFile}
                 </button>}
                 <div className="flex flex-wrap justify-center gap-2 mt-6 max-w-md">
                   {samples.map((s) => (
@@ -779,11 +786,12 @@ export default function App({ token, api, workspace, onExit, leaving, onPlans, o
           <div className="max-w-3xl mx-auto">
             {(attached.length > 0 || uploading || error) && (
               <div className="flex flex-wrap gap-2 items-center mb-2 px-1">
-                {attached.map((n, i) => (
-                  <span key={i} className="inline-flex items-center gap-1.5 text-[12px] glass-light border border-ink/[0.1] px-2.5 py-1 rounded-lg text-ink/70">
+                {attached.map((name) => (
+                  <span key={name} className={`inline-flex items-center gap-1.5 text-[12px] glass-light border px-2.5 py-1 rounded-lg ${selectedFile === name ? "border-brand text-brand" : "border-ink/10 text-ink/70"}`}>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
-                    <span className="truncate max-w-[120px] md:max-w-[160px]">{n}</span>
-                    <button onClick={() => removeAttached(i)} className="ml-0.5 text-ink/70 hover:text-brand transition" aria-label="Remove">
+                    <button className="truncate max-w-[120px] md:max-w-[160px]" title={name} aria-pressed={selectedFile === name}
+                      onClick={() => setSelectedFile(selectedFile === name ? null : name)}>{name}</button>
+                    <button onClick={() => removeAttached(name)} className="ml-0.5 text-ink/70 hover:text-brand transition" aria-label={`Hide ${name}`}>
                       <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
                     </button>
                   </span>
@@ -800,10 +808,10 @@ export default function App({ token, api, workspace, onExit, leaving, onPlans, o
                   <>
                     <div className="fixed inset-0 z-10" onClick={() => setShowPlus(false)} />
                     <div className="absolute bottom-11 left-0 z-20 w-44 glass border border-ink/[0.1] rounded-xl p-1.5 shadow-2xl">
-                      <button onClick={() => { setShowPlus(false); fileRef.current?.click(); }}
+                      <button disabled={uploading || loading} onClick={() => { setShowPlus(false); fileRef.current?.click(); }}
                         className="flex items-center gap-2.5 w-full px-3 py-2 rounded-lg hover:bg-ink/[0.06] text-sm text-ink/80 transition">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><path d="M14 2v6h6"/></svg>
-                        {t.uploadPdf}
+                        {t.uploadFile}
                       </button>
                     </div>
                   </>
@@ -835,7 +843,7 @@ export default function App({ token, api, workspace, onExit, leaving, onPlans, o
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
                 </button>
               ) : (
-                <button onClick={() => ask()} disabled={!question.trim()} aria-label={t.send}
+                <button onClick={() => ask()} disabled={!question.trim() || uploading} aria-label={t.send}
                   className="w-10 h-10 md:w-9 md:h-9 rounded-lg glossy-btn flex items-center justify-center text-ink">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
                 </button>

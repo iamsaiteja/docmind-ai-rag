@@ -263,7 +263,7 @@ export function Sources({ sources, t }) {
         </svg>
       </button>
       {open && (
-        <div className="mt-3 grid gap-2">
+        <div className="mt-3 grid grid-cols-1 gap-2">
           {sources.map((s, i) => (
             <div key={i}
               className="flex gap-3 rounded-xl glass-light border border-ink/[0.08] px-3.5 py-3 hover:border-accent-40 hover:bg-ink/[0.05] transition">
@@ -274,9 +274,9 @@ export function Sources({ sources, t }) {
               </div>
               <div className="min-w-0 flex-1">
                 <div className="flex items-center gap-2">
-                  <span className="text-[13px] font-semibold text-accent-strong truncate">{s.source}</span>
+                  <span title={s.source} className="text-[13px] font-semibold text-accent-strong truncate">{s.source}</span>
                   <span className="shrink-0 text-[10px] uppercase tracking-wider text-ink/70 bg-ink/[0.06] px-1.5 py-0.5 rounded">
-                    {i + 1}
+                    {s.page && /\.pdf$/i.test(s.source) ? `p. ${s.page}` : i + 1}
                   </span>
                 </div>
                 <p className="text-[12.5px] text-ink/45 mt-1 leading-relaxed line-clamp-3">{s.snippet}</p>
