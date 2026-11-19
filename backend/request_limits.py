@@ -13,6 +13,7 @@ class RequestLimits:
         self.limits = {
             '/auth/login': auth,
             '/auth/register': auth,
+            '/auth/firebase': auth,
             '/upload-pdf': BoundedSemaphore(2),
             '/ask': answers,
             '/ask-stream': answers,

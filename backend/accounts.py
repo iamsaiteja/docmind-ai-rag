@@ -13,6 +13,7 @@ from threading import Lock
 
 from fastapi import Depends, Header, HTTPException, Request
 from pydantic import BaseModel, Field
+from firebase_identity import verified_identity
 
 
 _schema_lock = Lock()
@@ -28,6 +29,10 @@ PLANS = {
 class Credentials(BaseModel):
     email: str = Field(max_length=254)
     password: str = Field(min_length=12, max_length=128)
+
+
+class FirebaseCredentials(BaseModel):
+    id_token: str = Field(min_length=1, max_length=8192)
 
 
 class ChatSnapshot(BaseModel):
@@ -52,6 +57,11 @@ def initialize_database(db, path):
             CREATE TABLE IF NOT EXISTS sessions (
                 token_hash TEXT PRIMARY KEY, owner TEXT NOT NULL,
                 user_id TEXT REFERENCES users(id), expires_at INTEGER NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS firebase_identities (
+                project_id TEXT NOT NULL, subject TEXT NOT NULL,
+                user_id TEXT NOT NULL UNIQUE REFERENCES users(id),
+                PRIMARY KEY (project_id, subject)
             );
             CREATE TABLE IF NOT EXISTS chats (
                 user_id TEXT PRIMARY KEY REFERENCES users(id),
@@ -125,7 +135,11 @@ def start_session(db, user=None):
 def profile(user):
     if user is None:
         return {'role': 'guest'}
-    return {'id': user['id'], 'email': user['email'], 'role': 'admin' if user['is_admin'] else 'user'}
+    return {'id': user['id'], 'email': account_email(user), 'role': 'admin' if user['is_admin'] else 'user'}
+
+
+def account_email(user):
+    return user['email'] if '@' in user['email'] else None
 
 
 def require_session(authorization: str = Header(default='')):
@@ -238,6 +252,34 @@ def add_routes(app):
             db.execute('UPDATE users SET last_seen=? WHERE id=?', (int(time.time()), user['id']))
             return start_session(db, user)
 
+    @app.post('/auth/firebase')
+    def firebase_sign_in(credentials: FirebaseCredentials, request: Request):
+        project_id = os.getenv('DOCMIND_FIREBASE_PROJECT_ID', '').strip()
+        if not project_id:
+            raise HTTPException(503, 'Google and phone sign-in are currently unavailable.')
+        with database() as db:
+            consume(db, [(f'firebase-login:{client_scope(request)}', 80), ('firebase-login', 1000)])
+        subject, verified_email = verified_identity(credentials.id_token, project_id)
+        email = login_email(verified_email) if verified_email is not None else None
+        now = int(time.time())
+        with database() as db:
+            db.execute('BEGIN IMMEDIATE')
+            user = db.execute("""
+                SELECT u.* FROM firebase_identities f JOIN users u ON u.id=f.user_id
+                WHERE f.project_id=? AND f.subject=?
+            """, (project_id, subject)).fetchone()
+            if user is None:
+                if email and db.execute('SELECT 1 FROM users WHERE email=?', (email,)).fetchone():
+                    raise HTTPException(409, 'This email belongs to an existing DocMind account. Use your original sign-in method.')
+                user_id = secrets.token_hex(16)
+                db.execute('INSERT INTO users VALUES (?, ?, ?, ?, 0, ?, ?)',
+                           (user_id, email or f'firebase:{user_id}', secrets.token_hex(16), '', now, now))
+                db.execute('INSERT INTO firebase_identities VALUES (?, ?, ?)', (project_id, subject, user_id))
+                user = db.execute('SELECT * FROM users WHERE id=?', (user_id,)).fetchone()
+            else:
+                db.execute('UPDATE users SET last_seen=? WHERE id=?', (now, user['id']))
+            return start_session(db, user)
+
     @app.get('/auth/me')
     def me(session=Depends(require_session)):
         if session['user_id'] is None:
@@ -315,8 +357,8 @@ def add_routes(app):
                 ORDER BY p.requested_at IS NULL, p.requested_at, u.created_at DESC, u.id LIMIT 100 OFFSET ?
             """, (max(0, offset),)).fetchall()
         return {'registered': total, 'active_24h': active, 'guest_sessions': guests[0] if guests else 0,
-                'users': [{key: user[key] for key in ('id', 'email', 'is_admin', 'created_at', 'last_seen')}
-                          | {'plan': plan_status(user)} for user in users]}
+                'users': [{key: user[key] for key in ('id', 'is_admin', 'created_at', 'last_seen')}
+                          | {'email': account_email(user), 'plan': plan_status(user)} for user in users]}
 
 
 if __name__ == '__main__':

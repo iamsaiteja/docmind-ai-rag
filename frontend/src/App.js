@@ -116,7 +116,7 @@ export default function App({ token, api, workspace, onExit, leaving, onPlans, o
   const guest = workspace.profile.role === "guest";
   /* ── persistent prefs (localStorage) ─────────────────── */
   const [lang, setLang] = useState(() => localStorage.getItem(LS.lang) || "en");
-  const [userName, setUserName] = useState(() => guest ? "Guest" : workspace.profile.email);
+  const [userName, setUserName] = useState(() => guest ? "Guest" : workspace.profile.email || "DocMind member");
   const [model, setModel] = useState(() => localStorage.getItem(LS.model) || "gemini-2.5-flash-lite");
   const t = STRINGS[lang] || STRINGS.en;
 
