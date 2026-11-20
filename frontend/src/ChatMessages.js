@@ -251,6 +251,7 @@ export function Sources({ sources, t }) {
     <div className="mt-4">
       <button
         onClick={() => setOpen(!open)}
+        aria-expanded={open}
         className="inline-flex items-center gap-2 text-[13px] text-ink/75 hover:text-ink/80 transition"
       >
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -265,7 +266,7 @@ export function Sources({ sources, t }) {
       {open && (
         <div className="mt-3 grid grid-cols-1 gap-2">
           {sources.map((s, i) => (
-            <div key={i}
+            <div key={s.id || i}
               className="flex gap-3 rounded-xl glass-light border border-ink/[0.08] px-3.5 py-3 hover:border-accent-40 hover:bg-ink/[0.05] transition">
               <div className="w-8 h-8 shrink-0 rounded-lg bg-accent-15 border border-accent-20 flex items-center justify-center text-accent-strong">
                 <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -273,13 +274,14 @@ export function Sources({ sources, t }) {
                 </svg>
               </div>
               <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {s.id && <span className="text-xs font-semibold text-accent-strong">[{s.id}]</span>}
                   <span title={s.source} className="text-[13px] font-semibold text-accent-strong truncate">{s.source}</span>
                   <span className="shrink-0 text-[10px] uppercase tracking-wider text-ink/70 bg-ink/[0.06] px-1.5 py-0.5 rounded">
-                    {s.page && /\.pdf$/i.test(s.source) ? `p. ${s.page}` : i + 1}
+                    {s.page && /\.pdf$/i.test(s.source) ? `p. ${s.page}` : s.id ? null : i + 1}
                   </span>
                 </div>
-                <p className="text-[12.5px] text-ink/45 mt-1 leading-relaxed line-clamp-3">{s.snippet}</p>
+                <p className="text-[12.5px] text-ink/75 mt-1 leading-relaxed whitespace-pre-wrap break-words">{s.snippet}</p>
               </div>
             </div>
           ))}

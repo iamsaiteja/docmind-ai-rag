@@ -259,7 +259,11 @@ export default function App({ token, api, workspace, onExit, leaving, onPlans, o
       messages.map((m) =>
         `### ${m.role === "user" ? t.you : "DocMind"}\n\n${m.content}\n` +
         (m.sources && m.sources.length
-          ? `\n**Sources:**\n` + m.sources.map((s, i) => `${i + 1}. ${s.source}`).join("\n") + "\n"
+          ? `\n**Sources:**\n` + m.sources.map((s, i) => {
+              const reference = s.id ? `[${s.id}]` : `${i + 1}.`;
+              const page = s.page && /\.pdf$/i.test(s.source) ? `, p. ${s.page}` : "";
+              return `${reference} ${s.source}${page}`;
+            }).join("\n") + "\n"
           : "")
       ).join("\n---\n\n");
     const blob = new Blob([md], { type: "text/markdown" });
@@ -334,6 +338,7 @@ export default function App({ token, api, workspace, onExit, leaving, onPlans, o
             streamRef.current = { content, sources };
             setMessages([...base, { role: "assistant", content, sources, streaming: true }]);
           } else if (data.type === "done") {
+            if (typeof data.answer === "string") content = data.answer;
             complete = true;
             break;
           } else if (data.type === "error") {
