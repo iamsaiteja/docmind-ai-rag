@@ -63,7 +63,7 @@ def test_inflight_streams_leave_capacity_for_login(client, monkeypatch):
     def generate(*args, **kwargs):
         start.wait(timeout=10)
         assert release.wait(timeout=15)
-        yield type('Answer', (), {'text': 'Sample answer'})()
+        yield type('Answer', (), {'text': 'Sample answer [S1]'})()
 
     monkeypatch.setattr(main, 'generate', generate)
     question = {'question': 'When does the library open?'}
@@ -79,9 +79,9 @@ def test_inflight_streams_leave_capacity_for_login(client, monkeypatch):
         finally:
             release.set()
         for stream in streams:
-            assert 'Sample answer' in stream.result(timeout=5).text
+            assert 'Sample answer [S1]' in stream.result(timeout=5).text
 
-    monkeypatch.setattr(main, 'generate', lambda *a, **k: type('Answer', (), {'text': 'Sample answer'})())
+    monkeypatch.setattr(main, 'generate', lambda *a, **k: type('Answer', (), {'text': 'Sample answer [S1]'})())
     assert client.post('/ask', headers=guest, json=question).status_code == 200
 
 
@@ -103,14 +103,17 @@ def test_sessions_cannot_retrieve_each_others_documents(client, monkeypatch):
     class Store:
         def delete(self, **kwargs): pass
         def get(self, where, include):
-            return {'ids': ['one'] if where == {'owner': owner} else []}
+            if where != {'owner': owner}:
+                return {'ids': [], 'documents': [], 'metadatas': []}
+            return {'ids': ['one'], 'documents': ['private document'],
+                    'metadatas': [{'source': 'safe.pdf', 'page': 1}]}
         def query(self, **kwargs):
             assert kwargs['where'] == {'owner': owner}
-            return {'documents': [['private document']], 'metadatas': [[{'source': 'safe.pdf', 'page': 1}]]}
+            return {'ids': [['one']]}
     monkeypatch.setattr(main, 'get_collection', lambda: Store())
     monkeypatch.setattr(main, 'get_embeddings', lambda: type('Embed', (), {'embed_query': lambda self,q: [0.1]})())
-    monkeypatch.setattr(main, 'generate', lambda *a, **k: type('Answer', (), {'text': 'private answer'})())
-    assert client.post('/ask', headers=first, json={'question': 'Q'}).json()['answer'] == 'private answer'
+    monkeypatch.setattr(main, 'generate', lambda *a, **k: type('Answer', (), {'text': 'private answer [S1]'})())
+    assert client.post('/ask', headers=first, json={'question': 'Q'}).json()['answer'] == 'private answer [S1]'
     result = client.post('/ask', headers=second, json={'question': 'Q'}).json()
     assert result['sources'] == []
     assert 'private' not in result['answer']
@@ -128,7 +131,7 @@ def test_upload_sanitizes_names_and_scopes_metadata(client, monkeypatch):
     captured = {}
     class Store:
         def delete(self, **kwargs): pass
-        def get(self, **kwargs): return {'ids': []}
+        def get(self, **kwargs): return {'ids': [], 'metadatas': []}
         def add(self, **kwargs): captured.update(kwargs)
     monkeypatch.setattr(main, 'get_collection', lambda: Store())
     monkeypatch.setattr(main, 'extract_chunks', lambda data,name: [('text', {'source': name, 'page': 1})])
@@ -155,7 +158,7 @@ def test_real_chroma_collection_enforces_session_filter(client, monkeypatch, tmp
     monkeypatch.setattr(main, 'get_collection', lambda: collection)
     monkeypatch.setattr(main, 'get_embeddings', lambda: type('Embed', (), {'embed_query': lambda self,q: [1.0,0.0]})())
     context, sources = main.retrieve_context('Q', owner)
-    assert context == '[a.pdf, page 1]\nonly session one' and sources[0]['page'] == 1
+    assert context == '[S1] a.pdf, page 1\nonly session one' and sources[0]['page'] == 1
     other = client.get('/auth/me', headers=second).json()['id']
     assert main.retrieve_context('Q', other) == ('', [])
 
@@ -170,7 +173,7 @@ def test_guest_cannot_upload_or_access_account_data(client, monkeypatch):
         raise AssertionError('Guest must never access private document storage.')
 
     monkeypatch.setattr(main, 'get_collection', private_collection)
-    monkeypatch.setattr(main, 'generate', lambda *a, **k: type('Answer', (), {'text': 'Sample answer'})())
+    monkeypatch.setattr(main, 'generate', lambda *a, **k: type('Answer', (), {'text': 'Sample answer [S1]'})())
     for _ in range(5):
         response = client.post('/ask', headers=guest, json={'question': 'When is the library open?'})
         assert response.json()['sources'][0]['source'] == 'Sample library guide'
